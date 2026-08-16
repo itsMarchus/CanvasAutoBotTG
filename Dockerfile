@@ -3,19 +3,20 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install pnpm matching package.json version
+RUN npm install -g pnpm@10.30.3
 
-# Install dependencies
+# Install all dependencies (including devDependencies for build)
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
-# Copy source code
+# Copy source code and compile TypeScript
 COPY tsconfig.json ./
 COPY src/ ./src/
-
-# Compile TypeScript
 RUN pnpm exec tsc
+
+# Prune devDependencies to keep image lean
+RUN pnpm prune --prod
 
 # Production runtime stage
 FROM node:22-alpine AS runner
@@ -23,14 +24,13 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN npm install -g pnpm
-
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --prod --frozen-lockfile
-
-# Copy compiled files and data volume
+# Copy pruned production dependencies and compiled JavaScript
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+
 RUN mkdir -p /app/data
+VOLUME ["/app/data"]
 
 EXPOSE 3000
 
