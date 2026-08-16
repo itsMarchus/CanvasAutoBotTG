@@ -8,7 +8,7 @@ import {
     getAllAssignments,
 } from "../canvas/assignments.js";
 import { getLatestAnnouncements } from "../canvas/announcements.js";
-import { cleanHtmlSnippet } from "../bot/formatters.js";
+import { cleanHtmlSnippet, turndown } from "../bot/formatters.js";
 
 /**
  * Tool Declarations for Gemini Function Calling
@@ -141,8 +141,8 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
 
                 const rawDesc = assignment.description || "";
                 const attachedFiles = extractAttachedFiles(rawDesc);
-                const cleanText = cleanHtmlSnippet(rawDesc, 4000);
-                const hasSubstantialText = cleanText.length > 30;
+                const markdownText = rawDesc.trim() ? turndown.turndown(rawDesc) : "";
+                const hasSubstantialText = markdownText.trim().length > 20;
 
                 return {
                     id: assignment.id,
@@ -157,7 +157,7 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                     has_text_instructions: hasSubstantialText,
                     has_attached_files: attachedFiles.length > 0,
                     attached_files: attachedFiles,
-                    instructions_text: cleanText || "(No written text instructions found)",
+                    instructions_text: markdownText || "(No written text instructions found)",
                     url: assignment.html_url,
                 };
             }

@@ -4,9 +4,9 @@ import { env } from "../config/env.js";
  * Generates the dynamic system prompt for the Gemini Academic Assistant.
  */
 export function buildSystemPrompt(studentName?: string): string {
-    const nameStr = studentName ? ` The student's name is ${studentName}.` : "";
+   const nameStr = studentName ? ` The student's name is ${studentName}.` : "";
 
-    return `You are "Canvas Academic Assistant", an intelligent, encouraging, and highly capable academic companion and personal tutor for college students.${nameStr}
+   return `You are "Canvas Academic Assistant", an intelligent, encouraging, and highly capable academic companion and personal tutor for college students.${nameStr}
 
 You are integrated directly into Telegram and have real-time access to the student's Canvas LMS account via tool functions.
 

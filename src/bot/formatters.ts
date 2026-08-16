@@ -4,6 +4,35 @@ import type { EnrichedAssignment } from "../canvas/assignments.js";
 import type { EnrichedAnnouncement } from "../canvas/announcements.js";
 import type { BotState } from "../services/storage.js";
 
+import TurndownService from "turndown";
+
+/**
+ * Shared Turndown instance configured for Canvas LMS HTML parsing.
+ */
+export const turndown = new TurndownService({
+    headingStyle: "atx",
+    bulletListMarker: "-",
+    codeBlockStyle: "fenced",
+    emDelimiter: "*",
+    strongDelimiter: "**",
+});
+
+// Disable Turndown's aggressive backslash escaping (which generates 1\., \[\], \_\_\_)
+turndown.escape = (str: string) => str;
+
+// Strip script, style, and head tags completely
+turndown.remove(["script", "style", "head"]);
+
+// Custom rule to preserve clean clickable markdown links
+turndown.addRule("cleanCanvasLinks", {
+    filter: "a",
+    replacement: (content, node) => {
+        const href = (node as HTMLElement).getAttribute("href");
+        if (!href) return content;
+        return `[${content.trim() || "Link"}](${href})`;
+    },
+});
+
 /**
  * Escapes HTML characters for Telegram HTML parse mode.
  */
@@ -17,74 +46,27 @@ export function escapeHtml(text: string = ""): string {
 
 /**
  * Converts rich Canvas HTML instructions into beautifully formatted, valid Telegram HTML.
- * Converts Canvas HTML to Markdown first, then formats with placeholder-safe Telegram HTML.
+ * Uses Turndown to convert DOM/HTML into clean Markdown, then converts to safe Telegram HTML.
  */
 export function formatInstructionsToTelegramHtml(html: string = "", maxLength = 2200): string {
-    if (!html) return "<i>No written instructions provided for this assignment.</i>";
+    if (!html || !html.trim()) return "<i>No written instructions provided for this assignment.</i>";
 
-    let text = html
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-        // Headers -> bold markdown
-        .replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, "\n\n**$1**\n\n")
-        // Paragraphs & line breaks
-        .replace(/<p[^>]*>/gi, "\n\n")
-        .replace(/<\/p>/gi, "")
-        .replace(/<br\s*\/?>/gi, "\n")
-        // Lists
-        .replace(/<li[^>]*>/gi, "\n• ")
-        .replace(/<\/li>/gi, "")
-        // Tables
-        .replace(/<tr[^>]*>/gi, "\n")
-        .replace(/<\/td>|<\/th>/gi, "  |  ")
-        // Blockquotes
-        .replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, "\n\n_$1_\n\n")
-        // Normalize nested bold/italics/code tags to markdown
-        .replace(/<(?:b|strong)[^>]*>([\s\S]*?)<\/(?:b|strong)>/gi, "**$1**")
-        .replace(/<(?:i|em)[^>]*>([\s\S]*?)<\/(?:i|em)>/gi, "*$1*")
-        .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, "`$1`")
-        .replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, "```\n$1\n```")
-        .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)")
-        // Strip any remaining unknown HTML tags
-        .replace(/<[^>]+>/g, " ")
-        // Entities
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, "'")
-        .replace(/&amp;/gi, "&")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        // Clean up excessive spaces & newlines
-        .replace(/[ \t]+/g, " ")
-        .replace(/\n\s+\n/g, "\n\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
+    let md = turndown.turndown(html);
 
-    if (text.length > maxLength) {
-        text = text.slice(0, maxLength).trim() + "\n\n_... [Instructions truncated. Tap button below to view full on Canvas]_";
+    if (md.length > maxLength) {
+        md = md.slice(0, maxLength).trim() + "\n\n_... [Instructions truncated. Tap button below to view full on Canvas]_";
     }
 
-    return markdownToTelegramHtml(text);
+    return markdownToTelegramHtml(md);
 }
 
 /**
  * Strips HTML tags and produces a clean single-line or short text preview snippet.
  */
 export function cleanHtmlSnippet(html: string = "", maxLength = 220): string {
-    if (!html) return "";
-    const cleaned = html
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-        .replace(/<br\s*\/?>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/\s+/g, " ")
-        .trim();
-
+    if (!html || !html.trim()) return "";
+    let md = turndown.turndown(html);
+    let cleaned = md.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
     if (cleaned.length <= maxLength) return cleaned;
     return cleaned.slice(0, maxLength).trim() + "...";
 }
@@ -419,35 +401,43 @@ export function markdownToTelegramHtml(markdown: string = ""): string {
 
     const placeholders: string[] = [];
     const savePlaceholder = (val: string) => {
-        const key = `___PH_${placeholders.length}___`;
+        const key = `\uE000PH${placeholders.length}\uE001`;
         placeholders.push(val);
         return key;
     };
 
     let text = markdown;
 
-    // 1. Protect code blocks
+    // 1. Strip unwanted backslash escapes from Markdown engines (e.g. 1\. -> 1., \[ -> [, \_ -> _)
+    text = text.replace(/\\([_*\\[\]().\-~>#+`!])/g, "$1");
+
+    // 2. Protect code blocks
     text = text.replace(/```(?:[\w-]+)?\n([\s\S]*?)```/g, (_match, code) => {
         const escapedCode = escapeHtml(code.trim());
         return savePlaceholder(`<pre>${escapedCode}</pre>`);
     });
 
-    // 2. Protect inline code
+    // 3. Protect inline code
     text = text.replace(/`([^`]+)`/g, (_match, code) => {
         const escapedCode = escapeHtml(code);
         return savePlaceholder(`<code>${escapedCode}</code>`);
     });
 
-    // 3. Protect links [text](url)
+    // 4. Protect links [text](url)
     text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, label, url) => {
         const escapedLabel = escapeHtml(label);
         return savePlaceholder(`<a href="${url}">${escapedLabel}</a>`);
     });
 
-    // 4. Escape remaining raw HTML characters in the body (&, <, >)
+    // 5. Protect fill-in-the-blank underline streaks (e.g. _______________)
+    text = text.replace(/_{2,}/g, (match) => {
+        return savePlaceholder(match);
+    });
+
+    // 6. Escape remaining raw HTML characters in the body (&, <, >)
     text = escapeHtml(text);
 
-    // 5. Convert markdown formatting
+    // 7. Convert markdown formatting
     text = text
         // Headers
         .replace(/^### (.*?)$/gm, "\n<b>$1</b>\n")
@@ -455,22 +445,21 @@ export function markdownToTelegramHtml(markdown: string = ""): string {
         .replace(/^# (.*?)$/gm, "\n<b>$1</b>\n")
         // Bold
         .replace(/\*\*(.*?)\*\*/g, "<b>$1</b>")
-        .replace(/__(.*?)__/g, "<b>$1</b>")
-        // Italic
+        // Italic (note: text is already html escaped)
         .replace(/\*(.*?)\*/g, "<i>$1</i>")
         // Checklists & bullets
         .replace(/^• \[[ xX]\] /gm, "✅ ")
         .replace(/^• \[ \] /gm, "⬜ ")
         .replace(/^\[[ xX]\] /gm, "✅ ")
         .replace(/^\[ \] /gm, "⬜ ")
-        .replace(/^[-*] /gm, "• ");
+        .replace(/^(\s*)[-*]\s+/gm, "$1• ");
 
-    // 6. Restore placeholders
+    // 8. Restore placeholders
     placeholders.forEach((val, i) => {
-        text = text.replace(new RegExp(`___PH_${i}___`, "g"), val);
+        text = text.replaceAll(`\uE000PH${i}\uE001`, val);
     });
 
-    // 7. Clean up excessive newlines
+    // 9. Clean up excessive newlines
     text = text.replace(/\n{3,}/g, "\n\n").trim();
     return text;
 }
