@@ -6,6 +6,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts"
   },
@@ -19,7 +20,9 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "croner": "^10.0.1",
     "dotenv": "^17.4.2",
-    "grammy": "^1.45.1"
+    "grammy": "^1.45.1",
+    "zod": "^4.4.3"
   }
 }

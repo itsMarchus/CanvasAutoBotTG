@@ -1,90 +1,53 @@
-// import "dotenv/config";
-// import { Bot } from "grammy";
-
-// const token = process.env.TELEGRAM_BOT_TOKEN;
-
-// if (!token) {
-//     throw new Error("TELEGRAM_BOT_TOKEN is missing");
-// }
-
-// const bot = new Bot(token);
-
-// async function setupCommands() {
-//     await bot.api.setMyCommands([
-//         {
-//             command: "start",
-//             description: "Start the bot",
-//         },
-//         {
-//             command: "help",
-//             description: "Show available commands",
-//         },
-//         {
-//             command: "courses",
-//             description: "View your Canvas courses",
-//         },
-//         {
-//             command: "assignments",
-//             description: "View your assignments",
-//         },
-//     ]);
-// }
-
-// bot.command("start", async (ctx) => {
-//     await ctx.reply(
-//         "Hello! Your Canvas Telegram Bot is working! 🚀\n\n" +
-//         "Use /help to see what I can do."
-//     );
-// });
-
-// bot.command("help", async (ctx) => {
-//     await ctx.reply(
-//         "📚 Canvas Assistant Commands\n\n" +
-//         "/start - Start the bot\n" +
-//         "/help - Show available commands\n" +
-//         "/courses - View your Canvas courses\n" +
-//         "/assignments - View your assignments"
-//     );
-// });
-
-// bot.on("message:text", async (ctx) => {
-//     await ctx.reply(`You said: ${ctx.message.text}`);
-// });
-
-// async function main() {
-//     await setupCommands();
-
-//     console.log("🤖 Telegram bot is running...");
-
-//     bot.start();
-// }
-
-// main();
-// import { getCurrentUser } from "./canvas/client.js";
-
-// async function main() {
-//   try {
-//     const user = await getCurrentUser();
-
-//     console.log("Canvas user:");
-//     console.log(user);
-//   } catch (error) {
-//     console.error("Failed to connect to Canvas:", error);
-//   }
-// }
-
-// main();
-import { getCourses } from "./canvas/client.js";
+import { env } from "./config/env.js";
+import { getCurrentUser } from "./canvas/client.js";
+import { bot, setupBotCommands } from "./bot/bot.js";
+import { notifier } from "./services/notifier.js";
 
 async function main() {
-  try {
-    const courses = await getCourses();
+    console.log("🚀 Initializing Canvas Telegram Assistant Bot...");
 
-    console.log("My Canvas courses:");
-    console.log(courses);
-  } catch (error) {
-    console.error("Failed to connect to Canvas:", error);
-  }
+    // 1. Validate Canvas connection
+    try {
+        const user = await getCurrentUser();
+        console.log(`🎓 Canvas Connection: Authenticated as "${user.name}" (ID: ${user.id})`);
+    } catch (err) {
+        console.error("⚠️ Warning: Failed to connect to Canvas API during startup:", err);
+        console.error("Please verify that CANVAS_BASE_URL and CANVAS_ACCESS_TOKEN are valid in your .env");
+    }
+
+    // 2. Register Telegram bot command menu
+    try {
+        await setupBotCommands();
+        console.log("📋 Telegram bot commands menu registered.");
+    } catch (err) {
+        console.warn("Could not register bot commands menu with Telegram:", err);
+    }
+
+    // 3. Start the background notifier
+    notifier.start();
+
+    // 4. Handle graceful shutdown
+    const shutdown = async (signal: string) => {
+        console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
+        notifier.stop();
+        await bot.stop();
+        console.log("👋 Assistant bot stopped. Goodbye!");
+        process.exit(0);
+    };
+
+    process.once("SIGINT", () => shutdown("SIGINT"));
+    process.once("SIGTERM", () => shutdown("SIGTERM"));
+
+    // 5. Start Telegram bot long-polling
+    console.log("🤖 Telegram bot is now polling for messages...");
+    bot.start({
+        onStart: (botInfo) => {
+            console.log(`✨ Bot @${botInfo.username} is online and running! (Timezone: ${env.TIMEZONE})`);
+        },
+    });
 }
 
-main();
+main().catch((err) => {
+    console.error("Fatal error during bot initialization:", err);
+    process.exit(1);
+});
