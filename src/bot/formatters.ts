@@ -90,20 +90,23 @@ export function formatHelpMessage(): string {
 Here are the commands you can use:
 
 🎯 <b>Assignments & Tasks</b>
-• /todo or /unsubmitted — View pending assignments
-• /assignments — View all upcoming assignments
-• /completed or /submitted — View submitted & graded work
+• /assignments or /upcoming — View active & upcoming assignments
+• /todo or /unsubmitted — View pending assignments needing action
+• /noduedate or /undated — View assignments without explicit deadlines
+• /completed or /submitted — View submitted & graded work with scores
+• /past or /overdue — View past assignments whose due date has passed
+• /allassignments or /all — View full master list of all assignments
 
 📖 <b>Courses & Updates</b>
-• /courses — List all your active Canvas courses
+• /courses — List active courses with interactive action buttons
 • /announcements — View latest course announcements
 • /sync — Force an immediate sync with Canvas
 
 ⚙️ <b>Bot & System</b>
-• /status — View bot status & last sync timestamp
+• /status — View bot health & sync timestamp
 • /help — Show this help menu
 
-<i>💡 Tip: You will automatically receive notifications for new announcements, newly posted assignments, and reminder alerts 1–3 hours before deadlines!</i>`;
+<i>💡 Tip: You will automatically receive notifications for new announcements, newly posted assignments, and deadline countdown reminders (1h & 3h before due date)!</i>`;
 }
 
 /**

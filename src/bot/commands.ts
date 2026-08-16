@@ -3,6 +3,9 @@ import { getCurrentUser } from "../canvas/client.js";
 import { getActiveCourses } from "../canvas/courses.js";
 import {
   getAllAssignments,
+  getUpcomingAssignments,
+  getNoDueDateAssignments,
+  getPastAssignments,
   getUnsubmittedAssignments,
   getSubmittedAssignments,
   getCourseAssignments,
@@ -13,7 +16,6 @@ import {
   escapeHtml,
   formatHelpMessage,
   formatCourseList,
-  formatAssignmentList,
   formatAssignmentListChunks,
   formatAnnouncementList,
   formatStatusMessage,
@@ -45,7 +47,7 @@ export async function handleStart(ctx: CommandContext<Context>): Promise<void> {
   }
 
   const welcome = `👋 <b>Hello! Your Canvas Academic Assistant is online and ready!</b> 🚀${canvasUserGreeting}\n\n` +
-    `I will monitor your courses 24/7 and automatically send you:\n` +
+    `I monitor your Canvas courses and automatically notify you of:\n` +
     `• 🔔 <b>New course announcements</b>\n` +
     `• 📝 <b>New assignments posted</b>\n` +
     `• ⏰ <b>Urgent deadline alerts (1–3 hours before due date)</b>\n\n` +
@@ -82,7 +84,7 @@ export async function handleCourses(ctx: CommandContext<Context>): Promise<void>
 }
 
 /**
- * /assignments command handler.
+ * /assignments or /upcoming: Shows ONLY upcoming and active assignments.
  * Usage: /assignments or /assignments <course_id>
  */
 export async function handleAssignments(ctx: CommandContext<Context>): Promise<void> {
@@ -93,10 +95,141 @@ export async function handleAssignments(ctx: CommandContext<Context>): Promise<v
     if (arg && !isNaN(Number(arg))) {
       const courseId = Number(arg);
       const rawAssignments = await getCourseAssignments(courseId);
+      const cutoff = Date.now() - 12 * 60 * 60 * 1000;
+      const upcoming = rawAssignments
+        .filter((a) => a.due_at !== null && new Date(a.due_at).getTime() >= cutoff)
+        .map((a) => ({ ...a, courseCode: `Course ${courseId}` }));
+
+      const chunks = formatAssignmentListChunks(
+        upcoming,
+        `Upcoming Tasks for Course ${courseId}`,
+        `🎉 <b>No upcoming assignments due for course ${courseId}.</b>`,
+        12
+      );
+      for (const chunk of chunks) {
+        await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+      }
+      return;
+    }
+
+    const assignments = await getUpcomingAssignments();
+    const chunks = formatAssignmentListChunks(
+      assignments,
+      "Active & Upcoming Canvas Assignments",
+      "🎉 <b>No upcoming assignments due soon! You are all caught up.</b>",
+      12
+    );
+    for (const chunk of chunks) {
+      await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    }
+  } catch (error) {
+    console.error("Error in /assignments:", error);
+    await ctx.reply("❌ <b>Failed to fetch upcoming assignments from Canvas.</b>", { parse_mode: "HTML" });
+  }
+}
+
+/**
+ * /noduedate or /undated: Shows assignments that have no explicit due date.
+ */
+export async function handleNoDueDate(ctx: CommandContext<Context>): Promise<void> {
+  await ctx.replyWithChatAction("typing");
+  const arg = ctx.match?.trim();
+
+  try {
+    if (arg && !isNaN(Number(arg))) {
+      const courseId = Number(arg);
+      const rawAssignments = await getCourseAssignments(courseId);
+      const undated = rawAssignments
+        .filter((a) => a.due_at === null)
+        .map((a) => ({ ...a, courseCode: `Course ${courseId}` }));
+
+      const chunks = formatAssignmentListChunks(
+        undated,
+        `Undated Tasks for Course ${courseId}`,
+        `ℹ️ <b>No undated assignments found for course ${courseId}.</b>`,
+        12
+      );
+      for (const chunk of chunks) {
+        await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+      }
+      return;
+    }
+
+    const assignments = await getNoDueDateAssignments();
+    const chunks = formatAssignmentListChunks(
+      assignments,
+      "Assignments with No Due Date",
+      "ℹ️ <b>No undated assignments found across your courses.</b>",
+      12
+    );
+    for (const chunk of chunks) {
+      await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    }
+  } catch (error) {
+    console.error("Error in /noduedate:", error);
+    await ctx.reply("❌ <b>Failed to fetch undated tasks from Canvas.</b>", { parse_mode: "HTML" });
+  }
+}
+
+/**
+ * /past or /overdue: Shows past assignments whose deadline has elapsed.
+ */
+export async function handlePast(ctx: CommandContext<Context>): Promise<void> {
+  await ctx.replyWithChatAction("typing");
+  const arg = ctx.match?.trim();
+
+  try {
+    if (arg && !isNaN(Number(arg))) {
+      const courseId = Number(arg);
+      const rawAssignments = await getCourseAssignments(courseId);
+      const now = Date.now();
+      const past = rawAssignments
+        .filter((a) => a.due_at !== null && new Date(a.due_at).getTime() < now)
+        .map((a) => ({ ...a, courseCode: `Course ${courseId}` }));
+
+      const chunks = formatAssignmentListChunks(
+        past,
+        `Past Tasks for Course ${courseId}`,
+        `ℹ️ <b>No past assignments found for course ${courseId}.</b>`,
+        12
+      );
+      for (const chunk of chunks) {
+        await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+      }
+      return;
+    }
+
+    const assignments = await getPastAssignments();
+    const chunks = formatAssignmentListChunks(
+      assignments,
+      "Past Assignments Archive",
+      "ℹ️ <b>No past assignments found in active courses.</b>",
+      12
+    );
+    for (const chunk of chunks) {
+      await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    }
+  } catch (error) {
+    console.error("Error in /past:", error);
+    await ctx.reply("❌ <b>Failed to fetch past tasks from Canvas.</b>", { parse_mode: "HTML" });
+  }
+}
+
+/**
+ * /allassignments or /all: Master list of ALL assignments (past, present, undated).
+ */
+export async function handleAllAssignments(ctx: CommandContext<Context>): Promise<void> {
+  await ctx.replyWithChatAction("typing");
+  const arg = ctx.match?.trim();
+
+  try {
+    if (arg && !isNaN(Number(arg))) {
+      const courseId = Number(arg);
+      const rawAssignments = await getCourseAssignments(courseId);
       const assignments = rawAssignments.map((a) => ({ ...a, courseCode: `Course ${courseId}` }));
       const chunks = formatAssignmentListChunks(
         assignments,
-        `Assignments for Course ${courseId}`,
+        `All Assignments for Course ${courseId}`,
         `🎉 <b>No assignments found for course ${courseId}.</b>`,
         12
       );
@@ -109,7 +242,7 @@ export async function handleAssignments(ctx: CommandContext<Context>): Promise<v
     const assignments = await getAllAssignments();
     const chunks = formatAssignmentListChunks(
       assignments,
-      "All Upcoming Canvas Assignments",
+      "Master Assignment List (All Courses)",
       "🎉 <b>No assignments found! You are all caught up.</b>",
       12
     );
@@ -117,13 +250,13 @@ export async function handleAssignments(ctx: CommandContext<Context>): Promise<v
       await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
     }
   } catch (error) {
-    console.error("Error in /assignments:", error);
-    await ctx.reply("❌ <b>Failed to fetch assignments from Canvas.</b>", { parse_mode: "HTML" });
+    console.error("Error in /allassignments:", error);
+    await ctx.reply("❌ <b>Failed to fetch all assignments from Canvas.</b>", { parse_mode: "HTML" });
   }
 }
 
 /**
- * /todo or /unsubmitted command handler.
+ * /todo or /unsubmitted: Pending unsubmitted tasks.
  */
 export async function handleTodo(ctx: CommandContext<Context>): Promise<void> {
   await ctx.replyWithChatAction("typing");
@@ -145,7 +278,7 @@ export async function handleTodo(ctx: CommandContext<Context>): Promise<void> {
 }
 
 /**
- * /completed or /submitted command handler.
+ * /completed or /submitted: Completed / graded work.
  */
 export async function handleCompleted(ctx: CommandContext<Context>): Promise<void> {
   await ctx.replyWithChatAction("typing");

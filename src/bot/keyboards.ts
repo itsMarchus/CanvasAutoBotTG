@@ -21,7 +21,10 @@ export function buildCoursesKeyboard(courses: CanvasCourse[]): InlineKeyboard {
  */
 export function buildCourseActionKeyboard(courseId: number): InlineKeyboard {
   return new InlineKeyboard()
-    .text("📋 View Assignments", `course_assign:${courseId}`)
+    .text("📅 Upcoming Tasks", `course_upcoming:${courseId}`)
+    .text("⏳ Pending / Todo", `course_todo:${courseId}`)
+    .row()
+    .text("📂 All Assignments", `course_all:${courseId}`)
     .text("📢 Announcements", `course_announce:${courseId}`)
     .row()
     .text("« Back to Courses", "back_courses");

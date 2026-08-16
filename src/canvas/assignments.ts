@@ -37,7 +37,7 @@ export function isAssignmentSubmitted(assignment: CanvasAssignment): boolean {
 }
 
 /**
- * Fetches assignments across all active courses, enriched with course details.
+ * Fetches all assignments across all active courses, enriched with course details.
  */
 export async function getAllAssignments(courses?: CanvasCourse[]): Promise<EnrichedAssignment[]> {
   const activeCourses = courses || (await getActiveCourses());
@@ -67,6 +67,38 @@ export async function getAllAssignments(courses?: CanvasCourse[]): Promise<Enric
 }
 
 /**
+ * Fetches only upcoming / active assignments (due in the future or within the last 12 hours).
+ */
+export async function getUpcomingAssignments(courses?: CanvasCourse[]): Promise<EnrichedAssignment[]> {
+  const all = await getAllAssignments(courses);
+  const cutoff = Date.now() - 12 * 60 * 60 * 1000; // Allow items due within the last 12 hours of today
+
+  return all
+    .filter((a) => a.due_at !== null && new Date(a.due_at).getTime() >= cutoff)
+    .sort((a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime());
+}
+
+/**
+ * Fetches assignments that have no explicit due date (ongoing tasks, reading, projects).
+ */
+export async function getNoDueDateAssignments(courses?: CanvasCourse[]): Promise<EnrichedAssignment[]> {
+  const all = await getAllAssignments(courses);
+  return all.filter((a) => a.due_at === null);
+}
+
+/**
+ * Fetches past assignments whose deadlines have already elapsed.
+ */
+export async function getPastAssignments(courses?: CanvasCourse[]): Promise<EnrichedAssignment[]> {
+  const all = await getAllAssignments(courses);
+  const now = Date.now();
+
+  return all
+    .filter((a) => a.due_at !== null && new Date(a.due_at).getTime() < now)
+    .sort((a, b) => new Date(b.due_at!).getTime() - new Date(a.due_at!).getTime()); // Most recent past first
+}
+
+/**
  * Fetches pending/unsubmitted assignments across all active courses.
  */
 export async function getUnsubmittedAssignments(courses?: CanvasCourse[]): Promise<EnrichedAssignment[]> {
@@ -77,11 +109,11 @@ export async function getUnsubmittedAssignments(courses?: CanvasCourse[]): Promi
     // Exclude submitted assignments
     if (isAssignmentSubmitted(assignment)) return false;
 
-    // If it has a due date in the past (> 30 days ago), we can skip old historical backlog
+    // If it has a due date in the past (> 45 days ago), skip ancient semester backlog
     if (assignment.due_at) {
       const dueDate = new Date(assignment.due_at);
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      if (dueDate < thirtyDaysAgo) return false;
+      const fortyFiveDaysAgo = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000);
+      if (dueDate < fortyFiveDaysAgo) return false;
     }
 
     return true;

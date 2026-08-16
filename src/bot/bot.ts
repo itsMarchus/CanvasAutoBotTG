@@ -6,6 +6,9 @@ import {
   handleHelp,
   handleCourses,
   handleAssignments,
+  handleNoDueDate,
+  handlePast,
+  handleAllAssignments,
   handleTodo,
   handleCompleted,
   handleAnnouncements,
@@ -53,10 +56,13 @@ bot.use(async (ctx: Context, next: NextFunction) => {
  */
 export async function setupBotCommands(): Promise<void> {
   await bot.api.setMyCommands([
-    { command: "todo", description: "View pending / unsubmitted tasks" },
-    { command: "courses", description: "View your active Canvas courses" },
-    { command: "assignments", description: "View all upcoming assignments" },
+    { command: "assignments", description: "View active & upcoming assignments" },
+    { command: "todo", description: "View pending tasks needing action" },
+    { command: "noduedate", description: "View assignments with no fixed deadline" },
     { command: "completed", description: "View submitted & graded work" },
+    { command: "past", description: "View past / overdue assignments archive" },
+    { command: "allassignments", description: "View master list of all assignments" },
+    { command: "courses", description: "View active courses with interactive menu" },
     { command: "announcements", description: "View latest course announcements" },
     { command: "status", description: "View bot & Canvas sync status" },
     { command: "help", description: "Show help and command list" },
@@ -67,11 +73,22 @@ export async function setupBotCommands(): Promise<void> {
 bot.command("start", handleStart);
 bot.command("help", handleHelp);
 bot.command("courses", handleCourses);
+
+// Assignment command variants
 bot.command("assignments", handleAssignments);
+bot.command("upcoming", handleAssignments);
+bot.command("noduedate", handleNoDueDate);
+bot.command("undated", handleNoDueDate);
+bot.command("past", handlePast);
+bot.command("overdue", handlePast);
+bot.command("allassignments", handleAllAssignments);
+bot.command("all", handleAllAssignments);
 bot.command("todo", handleTodo);
 bot.command("unsubmitted", handleTodo);
 bot.command("completed", handleCompleted);
 bot.command("submitted", handleCompleted);
+
+// Announcements & system commands
 bot.command("announcements", handleAnnouncements);
 bot.command("status", handleStatus);
 bot.command("sync", handleStatus);
