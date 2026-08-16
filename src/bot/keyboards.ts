@@ -1,5 +1,5 @@
 import { InlineKeyboard } from "grammy";
-import type { CanvasCourse } from "../canvas/types.js";
+import type { CanvasCourse, CanvasAssignment } from "../canvas/types.js";
 
 /**
  * Builds an inline keyboard listing courses with buttons to view details.
@@ -28,6 +28,45 @@ export function buildCourseActionKeyboard(courseId: number): InlineKeyboard {
     .text("📢 Announcements", `course_announce:${courseId}`)
     .row()
     .text("« Back to Courses", "back_courses");
+}
+
+/**
+ * Builds an interactive keyboard with buttons to view specific assignment details.
+ */
+export function buildAssignmentSelectionKeyboard(
+  assignments: CanvasAssignment[],
+  courseId: number,
+  maxButtons: number = 8
+): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+
+  const subset = assignments.slice(0, maxButtons);
+  subset.forEach((a, index) => {
+    const label = a.name.length > 28 ? `${a.name.slice(0, 26)}...` : a.name;
+    keyboard.text(`📝 ${index + 1}. ${label}`, `assign_view:${courseId}:${a.id}`).row();
+  });
+
+  keyboard.text("« Back to Course Menu", `course:${courseId}`);
+  return keyboard;
+}
+
+/**
+ * Builds an action keyboard for a single assignment detail view.
+ */
+export function buildAssignmentDetailKeyboard(htmlUrl: string, courseId?: number): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+
+  if (htmlUrl) {
+    keyboard.url("👉 Open in Canvas Browser", htmlUrl).row();
+  }
+
+  if (courseId) {
+    keyboard.text("« Back to Course Tasks", `course:${courseId}`);
+  } else {
+    keyboard.text("« Back to All Courses", "back_courses");
+  }
+
+  return keyboard;
 }
 
 /**

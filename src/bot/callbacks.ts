@@ -1,16 +1,19 @@
 import type { Context } from "grammy";
 import { getActiveCourses, getCourseById } from "../canvas/courses.js";
-import { getCourseAssignments } from "../canvas/assignments.js";
+import { getCourseAssignments, getAssignmentDetails } from "../canvas/assignments.js";
 import { getLatestAnnouncements } from "../canvas/announcements.js";
 import {
   escapeHtml,
   formatAssignmentList,
+  formatAssignmentDetail,
   formatAnnouncementList,
   formatCourseList,
 } from "./formatters.js";
 import {
   buildCoursesKeyboard,
   buildCourseActionKeyboard,
+  buildAssignmentSelectionKeyboard,
+  buildAssignmentDetailKeyboard,
   buildBackToCoursesKeyboard,
 } from "./keyboards.js";
 
@@ -85,9 +88,13 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
         `🎉 <b>No upcoming assignments due for ${escapeHtml(courseTitle)}.</b>`
       );
 
+      const keyboard = upcoming.length > 0
+        ? buildAssignmentSelectionKeyboard(upcoming, courseId)
+        : buildBackToCoursesKeyboard();
+
       await ctx.editMessageText(text, {
         parse_mode: "HTML",
-        reply_markup: buildBackToCoursesKeyboard(),
+        reply_markup: keyboard,
         link_preview_options: { is_disabled: true },
       });
       return;
@@ -123,9 +130,13 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
         `🎉 <b>No pending assignments for ${escapeHtml(courseTitle)}. You're caught up!</b>`
       );
 
+      const keyboard = pending.length > 0
+        ? buildAssignmentSelectionKeyboard(pending, courseId)
+        : buildBackToCoursesKeyboard();
+
       await ctx.editMessageText(text, {
         parse_mode: "HTML",
-        reply_markup: buildBackToCoursesKeyboard(),
+        reply_markup: keyboard,
         link_preview_options: { is_disabled: true },
       });
       return;
@@ -155,15 +166,44 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
         `🎉 <b>No assignments found for ${escapeHtml(courseTitle)}.</b>`
       );
 
+      const keyboard = assignments.length > 0
+        ? buildAssignmentSelectionKeyboard(assignments, courseId)
+        : buildBackToCoursesKeyboard();
+
       await ctx.editMessageText(text, {
         parse_mode: "HTML",
-        reply_markup: buildBackToCoursesKeyboard(),
+        reply_markup: keyboard,
         link_preview_options: { is_disabled: true },
       });
       return;
     }
 
-    // 6. View announcements for a specific course
+    // 6. View specific assignment details & description
+    if (data.startsWith("assign_view:")) {
+      const parts = data.split(":");
+      const courseId = parseInt(parts[1] || "", 10);
+      const assignmentId = parseInt(parts[2] || "", 10);
+
+      if (isNaN(courseId) || isNaN(assignmentId)) return;
+
+      await ctx.answerCallbackQuery({ text: "Loading assignment details..." });
+      const assignment = await getAssignmentDetails(courseId, assignmentId);
+
+      if (!assignment) {
+        await ctx.reply("❌ <b>Assignment details not found.</b>", { parse_mode: "HTML" });
+        return;
+      }
+
+      const text = formatAssignmentDetail(assignment);
+      await ctx.editMessageText(text, {
+        parse_mode: "HTML",
+        reply_markup: buildAssignmentDetailKeyboard(assignment.html_url, courseId),
+        link_preview_options: { is_disabled: true },
+      });
+      return;
+    }
+
+    // 7. View announcements for a specific course
     if (data.startsWith("course_announce:")) {
       const courseId = parseInt(data.split(":")[1] || "", 10);
       if (isNaN(courseId)) return;

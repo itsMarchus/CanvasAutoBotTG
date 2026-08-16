@@ -9,6 +9,7 @@ import {
   handleNoDueDate,
   handlePast,
   handleAllAssignments,
+  handleAssignmentDetail,
   handleTodo,
   handleCompleted,
   handleAnnouncements,
@@ -83,6 +84,8 @@ bot.command("past", handlePast);
 bot.command("overdue", handlePast);
 bot.command("allassignments", handleAllAssignments);
 bot.command("all", handleAllAssignments);
+bot.command("assignment", handleAssignmentDetail);
+bot.command("task", handleAssignmentDetail);
 bot.command("todo", handleTodo);
 bot.command("unsubmitted", handleTodo);
 bot.command("completed", handleCompleted);

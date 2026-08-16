@@ -9,6 +9,8 @@ import {
   getUnsubmittedAssignments,
   getSubmittedAssignments,
   getCourseAssignments,
+  getAssignmentDetails,
+  findAssignmentById,
 } from "../canvas/assignments.js";
 import { getLatestAnnouncements } from "../canvas/announcements.js";
 import { storage } from "../services/storage.js";
@@ -17,10 +19,11 @@ import {
   formatHelpMessage,
   formatCourseList,
   formatAssignmentListChunks,
+  formatAssignmentDetail,
   formatAnnouncementList,
   formatStatusMessage,
 } from "./formatters.js";
-import { buildCoursesKeyboard } from "./keyboards.js";
+import { buildCoursesKeyboard, buildAssignmentDetailKeyboard } from "./keyboards.js";
 
 /**
  * /start command handler.
@@ -252,6 +255,44 @@ export async function handleAllAssignments(ctx: CommandContext<Context>): Promis
   } catch (error) {
     console.error("Error in /allassignments:", error);
     await ctx.reply("❌ <b>Failed to fetch all assignments from Canvas.</b>", { parse_mode: "HTML" });
+  }
+}
+
+/**
+ * /assignment or /task <id>: Views full details and instructions for a specific assignment.
+ */
+export async function handleAssignmentDetail(ctx: CommandContext<Context>): Promise<void> {
+  await ctx.replyWithChatAction("typing");
+  const arg = ctx.match?.trim();
+
+  if (!arg || isNaN(Number(arg))) {
+    await ctx.reply("ℹ️ <b>Please specify an assignment ID.</b>\nExample: <code>/assignment 2614</code>", {
+      parse_mode: "HTML",
+    });
+    return;
+  }
+
+  const assignmentId = Number(arg);
+
+  try {
+    const assignment = await findAssignmentById(assignmentId);
+
+    if (!assignment) {
+      await ctx.reply(`❌ <b>Assignment #${assignmentId} not found</b> in your active courses.`, {
+        parse_mode: "HTML",
+      });
+      return;
+    }
+
+    const text = formatAssignmentDetail(assignment);
+    await ctx.reply(text, {
+      parse_mode: "HTML",
+      reply_markup: buildAssignmentDetailKeyboard(assignment.html_url, assignment.course_id),
+      link_preview_options: { is_disabled: true },
+    });
+  } catch (error) {
+    console.error(`Error in /assignment ${assignmentId}:`, error);
+    await ctx.reply("❌ <b>Failed to retrieve assignment details.</b>", { parse_mode: "HTML" });
   }
 }
 

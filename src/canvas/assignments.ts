@@ -1,5 +1,5 @@
 import { canvasFetch } from "./client.js";
-import { getActiveCourses } from "./courses.js";
+import { getActiveCourses, getCourseById } from "./courses.js";
 import type { CanvasAssignment, CanvasCourse } from "./types.js";
 
 export interface EnrichedAssignment extends CanvasAssignment {
@@ -22,6 +22,61 @@ export async function getCourseAssignments(courseId: number): Promise<CanvasAssi
     console.error(`Error fetching assignments for course ${courseId}:`, error);
     return [];
   }
+}
+
+/**
+ * Fetches detailed info for a single assignment including full description and submission.
+ */
+export async function getAssignmentDetails(
+  courseId: number,
+  assignmentId: number
+): Promise<EnrichedAssignment | null> {
+  try {
+    const [assignment, course] = await Promise.all([
+      canvasFetch<CanvasAssignment>(`/courses/${courseId}/assignments/${assignmentId}`, {
+        "include[]": ["submission"],
+      }),
+      getCourseById(courseId),
+    ]);
+
+    return {
+      ...assignment,
+      course_id: courseId,
+      courseName: course?.name,
+      courseCode: course?.course_code || course?.name,
+    };
+  } catch (error) {
+    console.error(`Error fetching details for assignment ${assignmentId} in course ${courseId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Searches across all active courses to find an assignment by its ID.
+ */
+export async function findAssignmentById(assignmentId: number): Promise<EnrichedAssignment | null> {
+  const activeCourses = await getActiveCourses();
+
+  for (const course of activeCourses) {
+    try {
+      const assignment = await canvasFetch<CanvasAssignment>(
+        `/courses/${course.id}/assignments/${assignmentId}`,
+        { "include[]": ["submission"] }
+      );
+      if (assignment && assignment.id === assignmentId) {
+        return {
+          ...assignment,
+          course_id: course.id,
+          courseName: course.name,
+          courseCode: course.course_code || course.name,
+        };
+      }
+    } catch {
+      // Not in this course, continue checking
+    }
+  }
+
+  return null;
 }
 
 /**
