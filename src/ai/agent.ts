@@ -4,6 +4,66 @@ import { storage } from "../services/storage.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { canvasToolDeclarations, executeCanvasTool } from "./tools.js";
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Executes a Gemini generateContent call with automatic retry and model fallback upon 503 / high demand spikes.
+ */
+async function generateContentWithFallback(
+    contents: any[],
+    systemInstruction: string
+): Promise<any> {
+    if (!ai) throw new Error("Gemini AI client is not initialized.");
+
+    const candidateModels = [
+        env.GEMINI_MODEL || "gemini-flash-latest",
+        "gemini-flash-lite-latest",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+    ];
+
+    let lastError: any = null;
+
+    for (const model of candidateModels) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const response = await ai.models.generateContent({
+                    model,
+                    contents,
+                    config: {
+                        systemInstruction,
+                        tools: [{ functionDeclarations: canvasToolDeclarations }],
+                        temperature: 0.7,
+                    },
+                });
+                return response;
+            } catch (err: any) {
+                lastError = err;
+                const errMsg = String(err.message || "");
+                const isOverloaded =
+                    err.status === 503 ||
+                    errMsg.includes("503") ||
+                    errMsg.includes("high demand") ||
+                    errMsg.includes("UNAVAILABLE") ||
+                    err.status === 429 ||
+                    errMsg.includes("429");
+
+                if (isOverloaded && attempt === 1) {
+                    console.warn(`⏳ [Gemini] Model ${model} is experiencing a spike (attempt 1). Retrying in 1.5s...`);
+                    await sleep(1500);
+                    continue;
+                }
+
+                // If attempt 2 failed on this model, break to try next fallback model
+                console.warn(`⚠️ [Gemini] Model ${model} unavailable. Falling back to alternative model...`);
+                break;
+            }
+        }
+    }
+
+    throw lastError;
+}
+
 /**
  * Runs the Gemini conversational agent with multi-turn memory and Canvas tool calling.
  */
@@ -35,7 +95,6 @@ export async function askGeminiAgent(
             parts: [{ text: userPrompt }],
         });
 
-        const model = env.GEMINI_MODEL || "gemini-2.5-flash";
         const systemInstruction = buildSystemPrompt(studentName);
 
         // 3. Agentic loop with tool calling support (max 5 iterations)
@@ -45,16 +104,7 @@ export async function askGeminiAgent(
         while (iterations < maxIterations) {
             iterations++;
 
-            const response = await ai.models.generateContent({
-                model,
-                contents,
-                config: {
-                    systemInstruction,
-                    tools: [{ functionDeclarations: canvasToolDeclarations }],
-                    temperature: 0.7,
-                },
-            });
-
+            const response = await generateContentWithFallback(contents, systemInstruction);
             const candidate = response.candidates?.[0];
             const content = candidate?.content;
 
@@ -110,6 +160,13 @@ export async function askGeminiAgent(
         return "I processed your request, but encountered too many tool cycles. Please try asking more specifically.";
     } catch (err: any) {
         console.error("Error in askGeminiAgent:", err);
+        const errMsg = String(err.message || "");
+        if (errMsg.includes("503") || errMsg.includes("high demand") || errMsg.includes("UNAVAILABLE")) {
+            return "⏳ <b>Gemini servers are experiencing high traffic right now.</b> Please try again in 10–20 seconds!";
+        }
+        if (errMsg.includes("429") || errMsg.includes("quota")) {
+            return "⏳ <b>AI rate limit reached.</b> Please wait a minute before sending your next question!";
+        }
         return `⚠️ <b>AI Error:</b> ${err.message || "An unexpected error occurred while communicating with Gemini."}`;
     }
 }
