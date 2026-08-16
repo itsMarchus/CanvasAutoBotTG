@@ -446,6 +446,42 @@ export async function handleExplain(ctx: CommandContext<Context>): Promise<void>
 }
 
 /**
+ * /answer <assignment_id_or_title>: Generates comprehensive answers/solutions for an assignment.
+ */
+export async function handleAnswer(ctx: CommandContext<Context>): Promise<void> {
+    let target = ctx.match?.trim() || "";
+    if (!target) {
+        await ctx.reply("ℹ️ <b>Please specify an assignment ID or name.</b>\nExample: <code>/answer 4453</code> or <code>/answer Activity 6</code>", {
+            parse_mode: "HTML",
+        });
+        return;
+    }
+
+    // Clean up input variations
+    const cleaned = target.replace(/^(?:assignment\s*id\s*|assignment\s*|id\s*|#\s*)/i, "").trim();
+    if (cleaned) {
+        target = cleaned;
+    }
+
+    await ctx.replyWithChatAction("typing");
+
+    try {
+        const prompt = `Please fetch the details and full instructions for assignment "${target}". ` +
+            `First, validate whether the questions and tasks are written directly in the description text or located inside an attached file: ` +
+            `- If the questions/tasks are written in the description, provide a complete, comprehensive, and accurate draft solution and answers with step-by-step logic, code, formulas, and explanations. ` +
+            `- If the assignment only contains an attached file link without the actual questions in text, state that the questions are inside the attached document, and invite the student to copy & paste the questions here to solve them. ` +
+            `- If both text and files are present, analyze if it is answerable from the text, solve what is possible, and request the missing questions if needed.`;
+
+        const user = await getCurrentUser().catch(() => undefined);
+        const response = await askGeminiAgent(ctx.chat.id, prompt, user?.name);
+        await replyAiChunksSafe(ctx, response);
+    } catch (err: any) {
+        console.error("Error in /answer:", err);
+        await ctx.reply(`❌ <b>AI Error:</b> ${err.message || "Failed to generate solution."}`, { parse_mode: "HTML" });
+    }
+}
+
+/**
  * /studyplan: Generates a prioritized study schedule based on real active deadlines.
  */
 export async function handleStudyPlan(ctx: CommandContext<Context>): Promise<void> {

@@ -16,6 +16,7 @@ import {
     handleStatus,
     handleAsk,
     handleExplain,
+    handleAnswer,
     handleStudyPlan,
     handleClearChat,
     handleFreeFormChat,
@@ -35,7 +36,7 @@ bot.use(async (ctx: Context, next: NextFunction) => {
     if (env.TELEGRAM_ALLOWED_USER_ID && fromId !== env.TELEGRAM_ALLOWED_USER_ID) {
         console.warn(`[Security] Blocked unauthorized access attempt from Telegram ID: ${fromId}`);
         if (ctx.chat?.type === "private") {
-            await ctx.reply("⛔ <b>Access Denied:</b> This bot is configured as a private personal assistant.", {
+            await ctx.reply("⛔ <b>Access Denied:</b> This bot is configured as a personal assistant.", {
                 parse_mode: "HTML",
             });
         }
@@ -47,7 +48,7 @@ bot.use(async (ctx: Context, next: NextFunction) => {
     if (allowedId && allowedId !== fromId) {
         console.warn(`[Security] Blocked unauthorized access attempt from Telegram ID: ${fromId}`);
         if (ctx.chat?.type === "private") {
-            await ctx.reply("⛔ <b>Access Denied:</b> This bot is configured as a private personal assistant.", {
+            await ctx.reply("⛔ <b>Access Denied:</b> This bot is configured as a personal assistant.", {
                 parse_mode: "HTML",
             });
         }
@@ -64,6 +65,7 @@ export async function setupBotCommands(): Promise<void> {
     await bot.api.setMyCommands([
         { command: "ask", description: "Ask Gemini AI any academic question" },
         { command: "explain", description: "Break down assignment instructions" },
+        { command: "answer", description: "Generate solutions & answers for a task" },
         { command: "studyplan", description: "Generate 7-day study timetable" },
         { command: "assignments", description: "View active & upcoming assignments" },
         { command: "todo", description: "View pending tasks needing action" },
@@ -84,6 +86,9 @@ bot.command("courses", handleCourses);
 // 2. AI Tutor & Assistant commands
 bot.command("ask", handleAsk);
 bot.command("explain", handleExplain);
+bot.command("answer", handleAnswer);
+bot.command("solve", handleAnswer);
+bot.command("solution", handleAnswer);
 bot.command("studyplan", handleStudyPlan);
 bot.command("clear", handleClearChat);
 bot.command("reset", handleClearChat);

@@ -146,6 +146,7 @@ Here are the commands and features you can use:
 • 💬 <i>Send any message directly to chat with Gemini!</i>
 • /ask &lt;question&gt; — Ask anything (tutoring, conceptual questions, Canvas queries)
 • /explain &lt;id&gt; — Step-by-step breakdown of an assignment's instructions
+• /answer &lt;id&gt; — Generate comprehensive answers & solutions for an assignment
 • /studyplan — Generate a personalized study schedule based on upcoming deadlines
 • /clear — Reset conversation memory
 

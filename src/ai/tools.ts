@@ -75,6 +75,25 @@ export const canvasToolDeclarations: FunctionDeclaration[] = [
     },
 ];
 
+function extractAttachedFiles(html: string = ""): string[] {
+    const fileLinks: string[] = [];
+    const linkRegex = /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let match;
+    while ((match = linkRegex.exec(html)) !== null) {
+        const url = match[1] || "";
+        const label = match[2]?.replace(/<[^>]+>/g, "").trim() || "";
+        if (
+            url.includes("/files/") ||
+            url.includes("download_frd=1") ||
+            /\.(pdf|docx?|xlsx?|pptx?|zip|rar|csv|txt|py|java|cpp|sql)$/i.test(label) ||
+            /\.(pdf|docx?|xlsx?|pptx?|zip|rar|csv|txt|py|java|cpp|sql)(\?|$)/i.test(url)
+        ) {
+            fileLinks.push(`${label || "Attached File"} (${url})`);
+        }
+    }
+    return fileLinks;
+}
+
 /**
  * Executes a tool function called by Gemini and returns structured data.
  */
@@ -120,6 +139,11 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                     return { error: `Assignment '${args.assignmentTitle || args.assignmentId}' not found in active courses.` };
                 }
 
+                const rawDesc = assignment.description || "";
+                const attachedFiles = extractAttachedFiles(rawDesc);
+                const cleanText = cleanHtmlSnippet(rawDesc, 4000);
+                const hasSubstantialText = cleanText.length > 30;
+
                 return {
                     id: assignment.id,
                     name: assignment.name,
@@ -130,7 +154,10 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                     submission_types: assignment.submission_types,
                     submission_status: assignment.submission?.workflow_state || "unsubmitted",
                     score: assignment.submission?.score ?? assignment.submission?.grade ?? null,
-                    description_html_cleaned: cleanHtmlSnippet(assignment.description || "", 3000),
+                    has_text_instructions: hasSubstantialText,
+                    has_attached_files: attachedFiles.length > 0,
+                    attached_files: attachedFiles,
+                    instructions_text: cleanText || "(No written text instructions found)",
                     url: assignment.html_url,
                 };
             }

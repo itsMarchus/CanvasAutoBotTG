@@ -61,7 +61,10 @@ export function buildAssignmentDetailKeyboard(
     const keyboard = new InlineKeyboard();
 
     if (assignmentId) {
-        keyboard.text("🤖 Explain with AI", `ai_explain:${assignmentId}`).row();
+        keyboard
+            .text("🤖 Explain Instructions", `ai_explain:${assignmentId}`)
+            .text("💡 Generate Answer", `ai_answer:${assignmentId}`)
+            .row();
     }
 
     if (htmlUrl) {

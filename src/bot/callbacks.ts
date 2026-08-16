@@ -234,6 +234,36 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
             return;
         }
 
+        // 8. AI Generate Answer / Solution Callback Button
+        if (data.startsWith("ai_answer:")) {
+            const assignmentId = parseInt(data.split(":")[1] || "", 10);
+            if (isNaN(assignmentId)) return;
+
+            await ctx.answerCallbackQuery({ text: "💡 Gemini is generating comprehensive solution..." });
+            if (!ctx.chat) return;
+
+            await ctx.replyWithChatAction("typing");
+
+            const prompt = `Please fetch the details and full instructions for assignment ID ${assignmentId}. ` +
+                `First, validate whether the questions and tasks are written directly in the description text or located inside an attached file: ` +
+                `- If the questions/tasks are written in the description, provide a complete, comprehensive, and accurate draft solution and answers with step-by-step logic, code, formulas, and explanations. ` +
+                `- If the assignment only contains an attached file link without the actual questions in text, state that the questions are inside the attached document, and invite the student to copy & paste the questions here to solve them. ` +
+                `- If both text and files are present, analyze if it is answerable from the text, solve what is possible, and request the missing questions if needed.`;
+
+            const user = await getCurrentUser().catch(() => undefined);
+            const response = await askGeminiAgent(ctx.chat.id, prompt, user?.name);
+            const chunks = formatAiResponseChunks(response);
+
+            for (const chunk of chunks) {
+                try {
+                    await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+                } catch {
+                    await ctx.reply(chunk, { link_preview_options: { is_disabled: true } });
+                }
+            }
+            return;
+        }
+
         // 8. View announcements for a specific course
         if (data.startsWith("course_announce:")) {
             const courseId = parseInt(data.split(":")[1] || "", 10);
