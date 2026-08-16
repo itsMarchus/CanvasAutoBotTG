@@ -14,6 +14,7 @@ import {
   formatHelpMessage,
   formatCourseList,
   formatAssignmentList,
+  formatAssignmentListChunks,
   formatAnnouncementList,
   formatStatusMessage,
 } from "./formatters.js";
@@ -93,22 +94,28 @@ export async function handleAssignments(ctx: CommandContext<Context>): Promise<v
       const courseId = Number(arg);
       const rawAssignments = await getCourseAssignments(courseId);
       const assignments = rawAssignments.map((a) => ({ ...a, courseCode: `Course ${courseId}` }));
-      const text = formatAssignmentList(
+      const chunks = formatAssignmentListChunks(
         assignments,
         `Assignments for Course ${courseId}`,
-        `🎉 <b>No assignments found for course ${courseId}.</b>`
+        `🎉 <b>No assignments found for course ${courseId}.</b>`,
+        12
       );
-      await ctx.reply(text, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+      for (const chunk of chunks) {
+        await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+      }
       return;
     }
 
     const assignments = await getAllAssignments();
-    const text = formatAssignmentList(
+    const chunks = formatAssignmentListChunks(
       assignments,
       "All Upcoming Canvas Assignments",
-      "🎉 <b>No assignments found! You are all caught up.</b>"
+      "🎉 <b>No assignments found! You are all caught up.</b>",
+      12
     );
-    await ctx.reply(text, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    for (const chunk of chunks) {
+      await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    }
   } catch (error) {
     console.error("Error in /assignments:", error);
     await ctx.reply("❌ <b>Failed to fetch assignments from Canvas.</b>", { parse_mode: "HTML" });
@@ -122,12 +129,15 @@ export async function handleTodo(ctx: CommandContext<Context>): Promise<void> {
   await ctx.replyWithChatAction("typing");
   try {
     const pending = await getUnsubmittedAssignments();
-    const text = formatAssignmentList(
+    const chunks = formatAssignmentListChunks(
       pending,
       "Pending / Unsubmitted Tasks",
-      "🎉 <b>Awesome! You have no pending or unsubmitted assignments.</b>"
+      "🎉 <b>Awesome! You have no pending or unsubmitted assignments.</b>",
+      12
     );
-    await ctx.reply(text, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    for (const chunk of chunks) {
+      await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    }
   } catch (error) {
     console.error("Error in /todo:", error);
     await ctx.reply("❌ <b>Failed to fetch pending tasks from Canvas.</b>", { parse_mode: "HTML" });
@@ -141,12 +151,15 @@ export async function handleCompleted(ctx: CommandContext<Context>): Promise<voi
   await ctx.replyWithChatAction("typing");
   try {
     const completed = await getSubmittedAssignments();
-    const text = formatAssignmentList(
+    const chunks = formatAssignmentListChunks(
       completed,
       "Submitted & Graded Assignments",
-      "ℹ️ <b>No submitted assignments recorded in recent courses.</b>"
+      "ℹ️ <b>No submitted assignments recorded in recent courses.</b>",
+      12
     );
-    await ctx.reply(text, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    for (const chunk of chunks) {
+      await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+    }
   } catch (error) {
     console.error("Error in /completed:", error);
     await ctx.reply("❌ <b>Failed to fetch completed tasks from Canvas.</b>", { parse_mode: "HTML" });

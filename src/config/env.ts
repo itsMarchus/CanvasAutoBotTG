@@ -23,6 +23,8 @@ const envSchema = z.object({
         .map((n) => parseFloat(n.trim()))
         .filter((n) => !isNaN(n))
     ),
+  SUPABASE_URL: z.string().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
 });
 
 const parseEnv = () => {

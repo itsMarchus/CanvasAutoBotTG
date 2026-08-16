@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { existsSync } from "node:fs";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { env } from "../config/env.js";
 
 export interface BotState {
   targetChatId: number | null;
@@ -38,6 +40,9 @@ const DEFAULT_STATE: BotState = {
   coursesCount: 0,
 };
 
+/**
+ * Local JSON file storage service (Fallback).
+ */
 export class FileStorageService implements IStorageService {
   private filePath: string;
   private memoryCache: BotState | null = null;
@@ -78,7 +83,6 @@ export class FileStorageService implements IStorageService {
 
   public async saveState(state: BotState): Promise<void> {
     this.memoryCache = state;
-    // Chain writes to avoid concurrent write corruptions
     this.writePromise = this.writePromise.then(async () => {
       await this.ensureDir();
       const tempPath = `${this.filePath}.tmp`;
@@ -119,7 +123,6 @@ export class FileStorageService implements IStorageService {
     const state = await this.getState();
     if (!state.seenAnnouncementIds.includes(id)) {
       state.seenAnnouncementIds.push(id);
-      // Keep list within 500 items
       if (state.seenAnnouncementIds.length > 500) {
         state.seenAnnouncementIds = state.seenAnnouncementIds.slice(-500);
       }
@@ -168,4 +171,156 @@ export class FileStorageService implements IStorageService {
   }
 }
 
-export const storage = new FileStorageService();
+/**
+ * Cloud PostgreSQL / Supabase storage service with Row-Level Security support.
+ */
+export class SupabaseStorageService implements IStorageService {
+  private client: SupabaseClient;
+
+  constructor() {
+    this.client = createClient(env.SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { persistSession: false },
+    });
+  }
+
+  public async getState(): Promise<BotState> {
+    const [userRes, seenAnnouncementsRes, seenAssignmentsRes, remindersRes, syncRes] = await Promise.all([
+      this.client.from("bot_users").select("telegram_chat_id, telegram_user_id").limit(1).maybeSingle(),
+      this.client.from("seen_items").select("canvas_id").eq("item_type", "announcement"),
+      this.client.from("seen_items").select("canvas_id").eq("item_type", "assignment"),
+      this.client.from("notification_logs").select("canvas_id, notification_type").eq("item_type", "assignment"),
+      this.client.from("system_sync_state").select("last_sync_at, courses_count").eq("id", 1).maybeSingle(),
+    ]);
+
+    const sentDueReminders: Record<string, { reminder3h?: boolean; reminder1h?: boolean }> = {};
+    if (remindersRes.data) {
+      for (const row of remindersRes.data) {
+        const key = String(row.canvas_id);
+        if (!sentDueReminders[key]) sentDueReminders[key] = {};
+        if (row.notification_type === "reminder3h") sentDueReminders[key]!.reminder3h = true;
+        if (row.notification_type === "reminder1h") sentDueReminders[key]!.reminder1h = true;
+      }
+    }
+
+    return {
+      targetChatId: userRes.data?.telegram_chat_id ? Number(userRes.data.telegram_chat_id) : null,
+      allowedUserId: userRes.data?.telegram_user_id ? Number(userRes.data.telegram_user_id) : null,
+      seenAnnouncementIds: seenAnnouncementsRes.data ? seenAnnouncementsRes.data.map((r) => Number(r.canvas_id)) : [],
+      seenAssignmentIds: seenAssignmentsRes.data ? seenAssignmentsRes.data.map((r) => Number(r.canvas_id)) : [],
+      sentDueReminders,
+      lastSyncAt: syncRes.data?.last_sync_at || null,
+      coursesCount: syncRes.data?.courses_count || 0,
+    };
+  }
+
+  public async saveState(_state: BotState): Promise<void> {
+    // Supabase handles atomic individual updates
+  }
+
+  public async getTargetChatId(): Promise<number | null> {
+    const { data } = await this.client.from("bot_users").select("telegram_chat_id").limit(1).maybeSingle();
+    return data?.telegram_chat_id ? Number(data.telegram_chat_id) : null;
+  }
+
+  public async setTargetChatId(chatId: number): Promise<void> {
+    const existing = await this.client.from("bot_users").select("id").limit(1).maybeSingle();
+    if (existing.data?.id) {
+      await this.client.from("bot_users").update({ telegram_chat_id: chatId, updated_at: new Date().toISOString() }).eq("id", existing.data.id);
+    } else {
+      await this.client.from("bot_users").insert({ telegram_chat_id: chatId });
+    }
+  }
+
+  public async getAllowedUserId(): Promise<number | null> {
+    const { data } = await this.client.from("bot_users").select("telegram_user_id").limit(1).maybeSingle();
+    return data?.telegram_user_id ? Number(data.telegram_user_id) : null;
+  }
+
+  public async setAllowedUserId(userId: number): Promise<void> {
+    const existing = await this.client.from("bot_users").select("id").limit(1).maybeSingle();
+    if (existing.data?.id) {
+      await this.client.from("bot_users").update({ telegram_user_id: userId, updated_at: new Date().toISOString() }).eq("id", existing.data.id);
+    } else {
+      await this.client.from("bot_users").insert({ telegram_chat_id: userId, telegram_user_id: userId });
+    }
+  }
+
+  public async isAnnouncementSeen(id: number): Promise<boolean> {
+    const { data } = await this.client
+      .from("seen_items")
+      .select("id")
+      .eq("item_type", "announcement")
+      .eq("canvas_id", id)
+      .maybeSingle();
+    return Boolean(data);
+  }
+
+  public async markAnnouncementSeen(id: number): Promise<void> {
+    await this.client.from("seen_items").upsert(
+      { item_type: "announcement", canvas_id: id },
+      { onConflict: "item_type, canvas_id" }
+    );
+  }
+
+  public async isAssignmentSeen(id: number): Promise<boolean> {
+    const { data } = await this.client
+      .from("seen_items")
+      .select("id")
+      .eq("item_type", "assignment")
+      .eq("canvas_id", id)
+      .maybeSingle();
+    return Boolean(data);
+  }
+
+  public async markAssignmentSeen(id: number): Promise<void> {
+    await this.client.from("seen_items").upsert(
+      { item_type: "assignment", canvas_id: id },
+      { onConflict: "item_type, canvas_id" }
+    );
+  }
+
+  public async getSentDueReminder(assignmentId: number): Promise<{ reminder3h?: boolean; reminder1h?: boolean } | undefined> {
+    const { data } = await this.client
+      .from("notification_logs")
+      .select("notification_type")
+      .eq("item_type", "assignment")
+      .eq("canvas_id", assignmentId);
+
+    if (!data || data.length === 0) return undefined;
+
+    const result: { reminder3h?: boolean; reminder1h?: boolean } = {};
+    for (const row of data) {
+      if (row.notification_type === "reminder3h") result.reminder3h = true;
+      if (row.notification_type === "reminder1h") result.reminder1h = true;
+    }
+    return result;
+  }
+
+  public async markDueReminderSent(assignmentId: number, type: "reminder3h" | "reminder1h"): Promise<void> {
+    await this.client.from("notification_logs").upsert(
+      { item_type: "assignment", canvas_id: assignmentId, notification_type: type },
+      { onConflict: "item_type, canvas_id, notification_type" }
+    );
+  }
+
+  public async updateSyncTimestamp(coursesCount?: number): Promise<void> {
+    await this.client.from("system_sync_state").upsert(
+      {
+        id: 1,
+        last_sync_at: new Date().toISOString(),
+        courses_count: coursesCount ?? 0,
+      },
+      { onConflict: "id" }
+    );
+  }
+}
+
+// Automatically choose Supabase if credentials are provided, else fallback to file storage
+const useSupabase = Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
+if (useSupabase) {
+  console.log("🗄️ Storage Engine: Cloud Supabase PostgreSQL (RLS Enabled)");
+} else {
+  console.log("📁 Storage Engine: Local File System (data/state.json)");
+}
+
+export const storage: IStorageService = useSupabase ? new SupabaseStorageService() : new FileStorageService();

@@ -126,34 +126,63 @@ export function formatCourseList(courses: CanvasCourse[]): string {
 }
 
 /**
- * Formats a list of assignments.
+ * Formats a list of assignments into chunks that never exceed Telegram's 4096 character limit.
+ */
+export function formatAssignmentListChunks(
+  assignments: EnrichedAssignment[],
+  title: string = "Assignments",
+  emptyMessage: string = "🎉 <b>No assignments found! You're all caught up.</b>",
+  chunkSize: number = 10
+): string[] {
+  if (assignments.length === 0) {
+    return [emptyMessage];
+  }
+
+  const chunks: string[] = [];
+  const total = assignments.length;
+  const totalChunks = Math.ceil(total / chunkSize);
+
+  for (let i = 0; i < total; i += chunkSize) {
+    const chunkAssignments = assignments.slice(i, i + chunkSize);
+    const chunkIndex = Math.floor(i / chunkSize) + 1;
+    const pageHeader = totalChunks > 1 ? ` (Part ${chunkIndex}/${totalChunks})` : "";
+    let text = `📋 <b>${title}${pageHeader} [${total}]</b>\n\n`;
+
+    chunkAssignments.forEach((a, index) => {
+      const globalIndex = i + index + 1;
+      const course = a.courseCode ? `[${escapeHtml(a.courseCode)}] ` : "";
+      const points =
+        a.points_possible !== null && a.points_possible !== undefined
+          ? ` • <i>${a.points_possible} pts</i>`
+          : "";
+      const status =
+        a.submission?.workflow_state === "submitted" || a.submission?.submitted_at
+          ? "✅ <b>Submitted</b>"
+          : a.submission?.workflow_state === "graded"
+          ? `🎯 <b>Score: ${a.submission.score ?? a.submission.grade ?? "Graded"}</b>`
+          : "⏳ <b>Pending</b>";
+
+      text += `${globalIndex}. ${course}<a href="${a.html_url}"><b>${escapeHtml(a.name)}</b></a>${points}\n`;
+      text += `   • Status: ${status}\n`;
+      text += `   • Due: ${formatDueDate(a.due_at)}\n\n`;
+    });
+
+    chunks.push(text);
+  }
+
+  return chunks;
+}
+
+/**
+ * Formats a list of assignments into a single string (for small lists or preview).
  */
 export function formatAssignmentList(
   assignments: EnrichedAssignment[],
   title: string = "Assignments",
   emptyMessage: string = "🎉 <b>No assignments found! You're all caught up.</b>"
 ): string {
-  if (assignments.length === 0) {
-    return emptyMessage;
-  }
-
-  let text = `📋 <b>${title} (${assignments.length})</b>\n\n`;
-
-  assignments.forEach((a, index) => {
-    const course = a.courseCode ? `[${escapeHtml(a.courseCode)}] ` : "";
-    const points = a.points_possible !== null && a.points_possible !== undefined ? ` • <i>${a.points_possible} pts</i>` : "";
-    const status = a.submission?.workflow_state === "submitted" || a.submission?.submitted_at
-      ? "✅ <b>Submitted</b>"
-      : a.submission?.workflow_state === "graded"
-      ? `🎯 <b>Score: ${a.submission.score ?? a.submission.grade ?? "Graded"}</b>`
-      : "⏳ <b>Pending</b>";
-
-    text += `${index + 1}. ${course}<a href="${a.html_url}"><b>${escapeHtml(a.name)}</b></a>${points}\n`;
-    text += `   • Status: ${status}\n`;
-    text += `   • Due: ${formatDueDate(a.due_at)}\n\n`;
-  });
-
-  return text;
+  const chunks = formatAssignmentListChunks(assignments, title, emptyMessage, 15);
+  return chunks[0] || emptyMessage;
 }
 
 /**
