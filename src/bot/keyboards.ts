@@ -53,17 +53,25 @@ export function buildAssignmentSelectionKeyboard(
 /**
  * Builds an action keyboard for a single assignment detail view.
  */
-export function buildAssignmentDetailKeyboard(htmlUrl: string, courseId?: number): InlineKeyboard {
+export function buildAssignmentDetailKeyboard(
+    htmlUrl: string,
+    courseId?: number,
+    assignmentId?: number
+): InlineKeyboard {
     const keyboard = new InlineKeyboard();
 
+    if (assignmentId) {
+        keyboard.text("🤖 Explain with AI", `ai_explain:${assignmentId}`).row();
+    }
+
     if (htmlUrl) {
-        keyboard.url("👉 Open in Canvas Browser", htmlUrl).row();
+        keyboard.url("👉 Open in Canvas Browser", htmlUrl);
     }
 
     if (courseId) {
-        keyboard.text("« Back to Course Tasks", `course:${courseId}`);
+        keyboard.row().text("« Back to Course Tasks", `course:${courseId}`);
     } else {
-        keyboard.text("« Back to All Courses", "back_courses");
+        keyboard.row().text("« Back to All Courses", "back_courses");
     }
 
     return keyboard;

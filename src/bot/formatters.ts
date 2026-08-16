@@ -16,61 +16,55 @@ export function escapeHtml(text: string = ""): string {
 }
 
 /**
- * Converts rich Canvas HTML instructions into beautifully formatted Telegram HTML.
- * Preserves paragraphs, line breaks, bold headers, bullet lists, code blocks, and links.
+ * Converts rich Canvas HTML instructions into beautifully formatted, valid Telegram HTML.
+ * Converts Canvas HTML to Markdown first, then formats with placeholder-safe Telegram HTML.
  */
 export function formatInstructionsToTelegramHtml(html: string = "", maxLength = 2200): string {
     if (!html) return "<i>No written instructions provided for this assignment.</i>";
 
-    // 1. Remove script and style elements
     let text = html
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
-
-    // 2. Convert headers into bold headers with newlines
-    text = text
-        .replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, "\n\n<b>$1</b>\n")
-        // 3. Convert paragraphs & breaks
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+        // Headers -> bold markdown
+        .replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, "\n\n**$1**\n\n")
+        // Paragraphs & line breaks
         .replace(/<p[^>]*>/gi, "\n\n")
         .replace(/<\/p>/gi, "")
         .replace(/<br\s*\/?>/gi, "\n")
-        // 4. Convert list items to bullet points
+        // Lists
         .replace(/<li[^>]*>/gi, "\n• ")
         .replace(/<\/li>/gi, "")
-        // 5. Convert tables to readable lines
+        // Tables
         .replace(/<tr[^>]*>/gi, "\n")
         .replace(/<\/td>|<\/th>/gi, "  |  ")
-        // 6. Convert blockquotes
-        .replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, "\n\n<i>$1</i>\n\n");
-
-    // 7. Normalize styling tags
-    text = text
-        .replace(/<(b|strong)[^>]*>([\s\S]*?)<\/(b|strong)>/gi, "<b>$2</b>")
-        .replace(/<(i|em)[^>]*>([\s\S]*?)<\/(i|em)>/gi, "<i>$2</i>")
-        .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, "<code>$1</code>")
-        .replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, "<pre>$1</pre>");
-
-    // 8. Convert links
-    text = text.replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, '<a href="$1">$2</a>');
-
-    // 9. Strip all other unsupported HTML tags
-    text = text.replace(/<(?!\/?(b|i|u|s|code|pre|a(\s+href="[^"]*")?)\b)[^>]*>/gi, "");
-
-    // 10. Decode common HTML entities
-    text = text
+        // Blockquotes
+        .replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, "\n\n_$1_\n\n")
+        // Normalize nested bold/italics/code tags to markdown
+        .replace(/<(?:b|strong)[^>]*>([\s\S]*?)<\/(?:b|strong)>/gi, "**$1**")
+        .replace(/<(?:i|em)[^>]*>([\s\S]*?)<\/(?:i|em)>/gi, "*$1*")
+        .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, "`$1`")
+        .replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, "```\n$1\n```")
+        .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)")
+        // Strip any remaining unknown HTML tags
+        .replace(/<[^>]+>/g, " ")
+        // Entities
         .replace(/&nbsp;/gi, " ")
         .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, "'");
-
-    // 11. Clean up excessive spaces and empty lines
-    text = text
+        .replace(/&#39;/gi, "'")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        // Clean up excessive spaces & newlines
         .replace(/[ \t]+/g, " ")
         .replace(/\n\s+\n/g, "\n\n")
         .replace(/\n{3,}/g, "\n\n")
         .trim();
 
-    if (text.length <= maxLength) return text;
-    return text.slice(0, maxLength).trim() + "\n\n<i>... [Instructions truncated. Tap button below to view full on Canvas]</i>";
+    if (text.length > maxLength) {
+        text = text.slice(0, maxLength).trim() + "\n\n_... [Instructions truncated. Tap button below to view full on Canvas]_";
+    }
+
+    return markdownToTelegramHtml(text);
 }
 
 /**
@@ -146,7 +140,14 @@ export function formatDueDate(dateString: string | null): string {
 export function formatHelpMessage(): string {
     return `📚 <b>Canvas Academic Assistant</b>
 
-Here are the commands you can use:
+Here are the commands and features you can use:
+
+🤖 <b>Gemini AI Academic Assistant</b>
+• 💬 <i>Send any message directly to chat with Gemini!</i>
+• /ask &lt;question&gt; — Ask anything (tutoring, conceptual questions, Canvas queries)
+• /explain &lt;id&gt; — Step-by-step breakdown of an assignment's instructions
+• /studyplan — Generate a personalized study schedule based on upcoming deadlines
+• /clear — Reset conversation memory
 
 🎯 <b>Assignments & Tasks</b>
 • /assignments or /upcoming — View active & upcoming assignments
@@ -160,7 +161,6 @@ Here are the commands you can use:
 📖 <b>Courses & Updates</b>
 • /courses — List active courses with interactive action buttons
 • /announcements — View latest course announcements
-• /sync — Force an immediate sync with Canvas
 
 ⚙️ <b>Bot & System</b>
 • /status — View bot health & sync timestamp
@@ -405,5 +405,100 @@ export function formatStatusMessage(state: BotState, user: CanvasUser): string {
         `🔄 <b>Last Background Sync:</b> ${syncTime}\n` +
         `⏰ <b>Sync Schedule:</b> Every 10 mins (<code>${env.POLL_INTERVAL_CRON}</code>)\n` +
         `🔔 <b>Proactive Reminders:</b> Enabled (3h and 1h countdowns)\n` +
+        `🧠 <b>Gemini AI:</b> ${env.GEMINI_API_KEY ? "🟢 Enabled (" + (env.GEMINI_MODEL || "gemini-2.5-flash") + ")" : "⚪ Disabled (Key not set)"}\n` +
         `🟢 <b>System Status:</b> Operational & Polling 24/7`;
+}
+
+/**
+ * Converts standard Markdown output from Gemini into safe Telegram HTML.
+ * Protects code blocks, inline code, and links, while escaping raw angle brackets.
+ */
+export function markdownToTelegramHtml(markdown: string = ""): string {
+    if (!markdown) return "";
+
+    const placeholders: string[] = [];
+    const savePlaceholder = (val: string) => {
+        const key = `___PH_${placeholders.length}___`;
+        placeholders.push(val);
+        return key;
+    };
+
+    let text = markdown;
+
+    // 1. Protect code blocks
+    text = text.replace(/```(?:[\w-]+)?\n([\s\S]*?)```/g, (_match, code) => {
+        const escapedCode = escapeHtml(code.trim());
+        return savePlaceholder(`<pre>${escapedCode}</pre>`);
+    });
+
+    // 2. Protect inline code
+    text = text.replace(/`([^`]+)`/g, (_match, code) => {
+        const escapedCode = escapeHtml(code);
+        return savePlaceholder(`<code>${escapedCode}</code>`);
+    });
+
+    // 3. Protect links [text](url)
+    text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, label, url) => {
+        const escapedLabel = escapeHtml(label);
+        return savePlaceholder(`<a href="${url}">${escapedLabel}</a>`);
+    });
+
+    // 4. Escape remaining raw HTML characters in the body (&, <, >)
+    text = escapeHtml(text);
+
+    // 5. Convert markdown formatting
+    text = text
+        // Headers
+        .replace(/^### (.*?)$/gm, "\n<b>$1</b>\n")
+        .replace(/^## (.*?)$/gm, "\n<b>$1</b>\n")
+        .replace(/^# (.*?)$/gm, "\n<b>$1</b>\n")
+        // Bold
+        .replace(/\*\*(.*?)\*\*/g, "<b>$1</b>")
+        .replace(/__(.*?)__/g, "<b>$1</b>")
+        // Italic
+        .replace(/\*(.*?)\*/g, "<i>$1</i>")
+        // Checklists & bullets
+        .replace(/^• \[[ xX]\] /gm, "✅ ")
+        .replace(/^• \[ \] /gm, "⬜ ")
+        .replace(/^\[[ xX]\] /gm, "✅ ")
+        .replace(/^\[ \] /gm, "⬜ ")
+        .replace(/^[-*] /gm, "• ");
+
+    // 6. Restore placeholders
+    placeholders.forEach((val, i) => {
+        text = text.replace(new RegExp(`___PH_${i}___`, "g"), val);
+    });
+
+    // 7. Clean up excessive newlines
+    text = text.replace(/\n{3,}/g, "\n\n").trim();
+    return text;
+}
+
+/**
+ * Splits AI markdown responses safely into chunks smaller than 3500 chars.
+ */
+export function formatAiResponseChunks(rawResponse: string, chunkSize = 3500): string[] {
+    const formatted = markdownToTelegramHtml(rawResponse);
+    if (formatted.length <= chunkSize) {
+        return [formatted];
+    }
+
+    const chunks: string[] = [];
+    const paragraphs = formatted.split("\n\n");
+    let currentChunk = "";
+
+    for (const para of paragraphs) {
+        if ((currentChunk + "\n\n" + para).length > chunkSize && currentChunk.length > 0) {
+            chunks.push(currentChunk.trim());
+            currentChunk = para;
+        } else {
+            currentChunk = currentChunk ? `${currentChunk}\n\n${para}` : para;
+        }
+    }
+
+    if (currentChunk.trim().length > 0) {
+        chunks.push(currentChunk.trim());
+    }
+
+    return chunks;
 }

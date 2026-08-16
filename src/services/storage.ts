@@ -14,6 +14,12 @@ export interface BotState {
     coursesCount: number;
 }
 
+export interface ChatMessage {
+    role: "user" | "model" | "system";
+    content: string;
+    createdAt?: string;
+}
+
 export interface IStorageService {
     getState(): Promise<BotState>;
     saveState(state: BotState): Promise<void>;
@@ -28,6 +34,9 @@ export interface IStorageService {
     getSentDueReminder(assignmentId: number): Promise<{ reminder3h?: boolean; reminder1h?: boolean } | undefined>;
     markDueReminderSent(assignmentId: number, type: "reminder3h" | "reminder1h"): Promise<void>;
     updateSyncTimestamp(coursesCount?: number): Promise<void>;
+    getChatHistory(chatId: number, limit?: number): Promise<ChatMessage[]>;
+    appendChatMessage(chatId: number, role: "user" | "model" | "system", content: string): Promise<void>;
+    clearChatHistory(chatId: number): Promise<void>;
 }
 
 const DEFAULT_STATE: BotState = {
@@ -46,6 +55,7 @@ const DEFAULT_STATE: BotState = {
 export class FileStorageService implements IStorageService {
     private filePath: string;
     private memoryCache: BotState | null = null;
+    private memoryChatHistory: Map<number, ChatMessage[]> = new Map();
     private writePromise: Promise<void> = Promise.resolve();
 
     constructor(filePath = path.resolve(process.cwd(), "data", "state.json")) {
@@ -168,6 +178,24 @@ export class FileStorageService implements IStorageService {
             state.coursesCount = coursesCount;
         }
         await this.saveState(state);
+    }
+
+    public async getChatHistory(chatId: number, limit = 12): Promise<ChatMessage[]> {
+        const list = this.memoryChatHistory.get(chatId) || [];
+        return list.slice(-limit);
+    }
+
+    public async appendChatMessage(chatId: number, role: "user" | "model" | "system", content: string): Promise<void> {
+        const list = this.memoryChatHistory.get(chatId) || [];
+        list.push({ role, content, createdAt: new Date().toISOString() });
+        if (list.length > 50) {
+            list.splice(0, list.length - 50);
+        }
+        this.memoryChatHistory.set(chatId, list);
+    }
+
+    public async clearChatHistory(chatId: number): Promise<void> {
+        this.memoryChatHistory.delete(chatId);
     }
 }
 
@@ -312,6 +340,50 @@ export class SupabaseStorageService implements IStorageService {
             },
             { onConflict: "id" }
         );
+    }
+
+    public async getChatHistory(chatId: number, limit = 12): Promise<ChatMessage[]> {
+        try {
+            const { data, error } = await this.client
+                .from("chat_history")
+                .select("role, content, created_at")
+                .eq("telegram_chat_id", chatId)
+                .order("created_at", { ascending: false })
+                .limit(limit);
+
+            if (error || !data) return [];
+
+            return data
+                .reverse()
+                .map((row) => ({
+                    role: row.role as "user" | "model" | "system",
+                    content: row.content,
+                    createdAt: row.created_at,
+                }));
+        } catch (err) {
+            console.error("Error fetching chat history from Supabase:", err);
+            return [];
+        }
+    }
+
+    public async appendChatMessage(chatId: number, role: "user" | "model" | "system", content: string): Promise<void> {
+        try {
+            await this.client.from("chat_history").insert({
+                telegram_chat_id: chatId,
+                role,
+                content,
+            });
+        } catch (err) {
+            console.error("Error saving chat message to Supabase:", err);
+        }
+    }
+
+    public async clearChatHistory(chatId: number): Promise<void> {
+        try {
+            await this.client.from("chat_history").delete().eq("telegram_chat_id", chatId);
+        } catch (err) {
+            console.error("Error clearing chat history in Supabase:", err);
+        }
     }
 }
 

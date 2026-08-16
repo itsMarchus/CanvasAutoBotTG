@@ -14,6 +14,11 @@ import {
     handleCompleted,
     handleAnnouncements,
     handleStatus,
+    handleAsk,
+    handleExplain,
+    handleStudyPlan,
+    handleClearChat,
+    handleFreeFormChat,
 } from "./commands.js";
 import { handleCallbackQuery } from "./callbacks.js";
 
@@ -57,25 +62,33 @@ bot.use(async (ctx: Context, next: NextFunction) => {
  */
 export async function setupBotCommands(): Promise<void> {
     await bot.api.setMyCommands([
+        { command: "ask", description: "Ask Gemini AI any academic question" },
+        { command: "explain", description: "Break down assignment instructions" },
+        { command: "studyplan", description: "Generate 7-day study timetable" },
         { command: "assignments", description: "View active & upcoming assignments" },
         { command: "todo", description: "View pending tasks needing action" },
-        { command: "noduedate", description: "View assignments with no fixed deadline" },
-        { command: "completed", description: "View submitted & graded work" },
-        { command: "past", description: "View past / overdue assignments archive" },
-        { command: "allassignments", description: "View master list of all assignments" },
         { command: "courses", description: "View active courses with interactive menu" },
         { command: "announcements", description: "View latest course announcements" },
-        { command: "status", description: "View bot & Canvas sync status" },
+        { command: "allassignments", description: "View master list of all assignments" },
+        { command: "clear", description: "Clear Gemini conversation memory" },
+        { command: "status", description: "View bot, Canvas & AI status" },
         { command: "help", description: "Show help and command list" },
     ]);
 }
 
-// Register command handlers
+// 1. Core navigation & help
 bot.command("start", handleStart);
 bot.command("help", handleHelp);
 bot.command("courses", handleCourses);
 
-// Assignment command variants
+// 2. AI Tutor & Assistant commands
+bot.command("ask", handleAsk);
+bot.command("explain", handleExplain);
+bot.command("studyplan", handleStudyPlan);
+bot.command("clear", handleClearChat);
+bot.command("reset", handleClearChat);
+
+// 3. Assignment commands
 bot.command("assignments", handleAssignments);
 bot.command("upcoming", handleAssignments);
 bot.command("noduedate", handleNoDueDate);
@@ -91,13 +104,16 @@ bot.command("unsubmitted", handleTodo);
 bot.command("completed", handleCompleted);
 bot.command("submitted", handleCompleted);
 
-// Announcements & system commands
+// 4. Announcements & system commands
 bot.command("announcements", handleAnnouncements);
 bot.command("status", handleStatus);
 bot.command("sync", handleStatus);
 
-// Register inline keyboard callback queries
+// 5. Inline keyboard callback queries
 bot.on("callback_query:data", handleCallbackQuery);
+
+// 6. Free-form text messages (routed directly to Gemini AI)
+bot.on("message:text", handleFreeFormChat);
 
 // Error boundary
 bot.catch((err) => {

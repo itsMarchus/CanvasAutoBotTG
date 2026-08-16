@@ -1,13 +1,16 @@
 import type { Context } from "grammy";
+import { getCurrentUser } from "../canvas/client.js";
 import { getActiveCourses, getCourseById } from "../canvas/courses.js";
 import { getCourseAssignments, getAssignmentDetails } from "../canvas/assignments.js";
 import { getLatestAnnouncements } from "../canvas/announcements.js";
+import { askGeminiAgent } from "../ai/agent.js";
 import {
     escapeHtml,
     formatAssignmentList,
     formatAssignmentDetail,
     formatAnnouncementList,
     formatCourseList,
+    formatAiResponseChunks,
 } from "./formatters.js";
 import {
     buildCoursesKeyboard,
@@ -197,13 +200,41 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
             const text = formatAssignmentDetail(assignment);
             await ctx.editMessageText(text, {
                 parse_mode: "HTML",
-                reply_markup: buildAssignmentDetailKeyboard(assignment.html_url, courseId),
+                reply_markup: buildAssignmentDetailKeyboard(assignment.html_url, courseId, assignment.id),
                 link_preview_options: { is_disabled: true },
             });
             return;
         }
 
-        // 7. View announcements for a specific course
+        // 7. AI Explain Assignment Callback Button
+        if (data.startsWith("ai_explain:")) {
+            const assignmentId = parseInt(data.split(":")[1] || "", 10);
+            if (isNaN(assignmentId)) return;
+
+            await ctx.answerCallbackQuery({ text: "🧠 Gemini is analyzing instructions..." });
+            if (!ctx.chat) return;
+
+            await ctx.replyWithChatAction("typing");
+
+            const prompt = `Please fetch the details and instructions for assignment ID ${assignmentId}. ` +
+                `Explain the task clearly, summarize what the professor expects, break down the requirements into an actionable step-by-step checklist, and give tips on how to score full points.`;
+
+            const user = await getCurrentUser().catch(() => undefined);
+            const response = await askGeminiAgent(ctx.chat.id, prompt, user?.name);
+            const chunks = formatAiResponseChunks(response);
+
+            for (const chunk of chunks) {
+                try {
+                    await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+                } catch {
+                    // Fallback to plain text if any edge case tag fails
+                    await ctx.reply(chunk, { link_preview_options: { is_disabled: true } });
+                }
+            }
+            return;
+        }
+
+        // 8. View announcements for a specific course
         if (data.startsWith("course_announce:")) {
             const courseId = parseInt(data.split(":")[1] || "", 10);
             if (isNaN(courseId)) return;

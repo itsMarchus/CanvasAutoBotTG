@@ -9,11 +9,11 @@ import {
     getUnsubmittedAssignments,
     getSubmittedAssignments,
     getCourseAssignments,
-    getAssignmentDetails,
     findAssignmentById,
 } from "../canvas/assignments.js";
 import { getLatestAnnouncements } from "../canvas/announcements.js";
 import { storage } from "../services/storage.js";
+import { askGeminiAgent } from "../ai/agent.js";
 import {
     escapeHtml,
     formatHelpMessage,
@@ -22,8 +22,24 @@ import {
     formatAssignmentDetail,
     formatAnnouncementList,
     formatStatusMessage,
+    formatAiResponseChunks,
 } from "./formatters.js";
 import { buildCoursesKeyboard, buildAssignmentDetailKeyboard } from "./keyboards.js";
+
+/**
+ * Safely sends AI markdown/HTML response chunks with plain text fallback if parsing errors occur.
+ */
+async function replyAiChunksSafe(ctx: Context, response: string): Promise<void> {
+    const chunks = formatAiResponseChunks(response);
+    for (const chunk of chunks) {
+        try {
+            await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+        } catch {
+            // Graceful fallback to plain text if any edge case tag is rejected by Telegram
+            await ctx.reply(chunk, { link_preview_options: { is_disabled: true } });
+        }
+    }
+}
 
 /**
  * /start command handler.
@@ -54,7 +70,7 @@ export async function handleStart(ctx: CommandContext<Context>): Promise<void> {
         `• 🔔 <b>New course announcements</b>\n` +
         `• 📝 <b>New assignments posted</b>\n` +
         `• ⏰ <b>Urgent deadline alerts (1–3 hours before due date)</b>\n\n` +
-        `Use /help to see all available commands, or /courses to view your classes.`;
+        `💡 <b>Gemini AI is ready:</b> Send any message directly to chat with your AI Academic Tutor, or use /help to see all commands!`;
 
     await ctx.reply(welcome, { parse_mode: "HTML" });
 }
@@ -87,8 +103,7 @@ export async function handleCourses(ctx: CommandContext<Context>): Promise<void>
 }
 
 /**
- * /assignments or /upcoming: Shows ONLY upcoming and active assignments.
- * Usage: /assignments or /assignments <course_id>
+ * /assignments or /upcoming: Shows active and upcoming tasks.
  */
 export async function handleAssignments(ctx: CommandContext<Context>): Promise<void> {
     await ctx.replyWithChatAction("typing");
@@ -132,7 +147,7 @@ export async function handleAssignments(ctx: CommandContext<Context>): Promise<v
 }
 
 /**
- * /noduedate or /undated: Shows assignments that have no explicit due date.
+ * /noduedate or /undated: Shows assignments without explicit due dates.
  */
 export async function handleNoDueDate(ctx: CommandContext<Context>): Promise<void> {
     await ctx.replyWithChatAction("typing");
@@ -287,7 +302,7 @@ export async function handleAssignmentDetail(ctx: CommandContext<Context>): Prom
         const text = formatAssignmentDetail(assignment);
         await ctx.reply(text, {
             parse_mode: "HTML",
-            reply_markup: buildAssignmentDetailKeyboard(assignment.html_url, assignment.course_id),
+            reply_markup: buildAssignmentDetailKeyboard(assignment.html_url, assignment.course_id, assignment.id),
             link_preview_options: { is_disabled: true },
         });
     } catch (error) {
@@ -319,7 +334,7 @@ export async function handleTodo(ctx: CommandContext<Context>): Promise<void> {
 }
 
 /**
- * /completed or /submitted: Completed / graded work.
+ * /completed or /submitted: Graded and submitted tasks.
  */
 export async function handleCompleted(ctx: CommandContext<Context>): Promise<void> {
     await ctx.replyWithChatAction("typing");
@@ -370,5 +385,111 @@ export async function handleStatus(ctx: CommandContext<Context>): Promise<void> 
     } catch (error) {
         console.error("Error in /status:", error);
         await ctx.reply("⚠️ <b>Could not retrieve status. Check connection to Canvas.</b>", { parse_mode: "HTML" });
+    }
+}
+
+/**
+ * /ask <question>: Direct prompt to Gemini with full Canvas context.
+ */
+export async function handleAsk(ctx: CommandContext<Context>): Promise<void> {
+    const question = ctx.match?.trim();
+    if (!question) {
+        await ctx.reply("ℹ️ <b>Please provide a question for Gemini.</b>\nExample: <code>/ask What assignments are due this week?</code>", {
+            parse_mode: "HTML",
+        });
+        return;
+    }
+
+    await ctx.replyWithChatAction("typing");
+
+    try {
+        const user = await getCurrentUser().catch(() => undefined);
+        const response = await askGeminiAgent(ctx.chat.id, question, user?.name);
+        await replyAiChunksSafe(ctx, response);
+    } catch (err: any) {
+        console.error("Error in /ask:", err);
+        await ctx.reply(`❌ <b>AI Error:</b> ${err.message || "Failed to process question."}`, { parse_mode: "HTML" });
+    }
+}
+
+/**
+ * /explain <assignment_id_or_title>: Explains and breaks down an assignment into steps.
+ */
+export async function handleExplain(ctx: CommandContext<Context>): Promise<void> {
+    let target = ctx.match?.trim() || "";
+    if (!target) {
+        await ctx.reply("ℹ️ <b>Please specify an assignment ID or name.</b>\nExample: <code>/explain 4453</code> or <code>/explain PivotTable</code>", {
+            parse_mode: "HTML",
+        });
+        return;
+    }
+
+    // Clean up input variations like "assignment ID 4453", "assignment 4453", "ID 4453", "#4453"
+    const cleaned = target.replace(/^(?:assignment\s*id\s*|assignment\s*|id\s*|#\s*)/i, "").trim();
+    if (cleaned) {
+        target = cleaned;
+    }
+
+    await ctx.replyWithChatAction("typing");
+
+    try {
+        const prompt = `Please fetch the details and instructions for assignment "${target}". ` +
+            `Explain the task clearly, summarize what the professor expects, break down the requirements into an actionable step-by-step checklist, and give tips on how to score full points.`;
+
+        const user = await getCurrentUser().catch(() => undefined);
+        const response = await askGeminiAgent(ctx.chat.id, prompt, user?.name);
+        await replyAiChunksSafe(ctx, response);
+    } catch (err: any) {
+        console.error("Error in /explain:", err);
+        await ctx.reply(`❌ <b>AI Error:</b> ${err.message || "Failed to explain assignment."}`, { parse_mode: "HTML" });
+    }
+}
+
+/**
+ * /studyplan: Generates a prioritized study schedule based on real active deadlines.
+ */
+export async function handleStudyPlan(ctx: CommandContext<Context>): Promise<void> {
+    await ctx.replyWithChatAction("typing");
+
+    try {
+        const prompt = `Look up all my active and upcoming assignments across my Canvas courses. ` +
+            `Create a realistic, prioritized 7-day study timetable and action plan based on the deadlines and task complexities. ` +
+            `Include tips for managing workload effectively.`;
+
+        const user = await getCurrentUser().catch(() => undefined);
+        const response = await askGeminiAgent(ctx.chat.id, prompt, user?.name);
+        await replyAiChunksSafe(ctx, response);
+    } catch (err: any) {
+        console.error("Error in /studyplan:", err);
+        await ctx.reply(`❌ <b>AI Error:</b> ${err.message || "Failed to generate study plan."}`, { parse_mode: "HTML" });
+    }
+}
+
+/**
+ * /clear or /reset: Clears conversational memory.
+ */
+export async function handleClearChat(ctx: CommandContext<Context>): Promise<void> {
+    await storage.clearChatHistory(ctx.chat.id);
+    await ctx.reply("🧹 <b>Conversation memory cleared!</b> You can now start a fresh conversation with Gemini.", {
+        parse_mode: "HTML",
+    });
+}
+
+/**
+ * Natural Free-Form Chat Handler (all non-command text messages).
+ */
+export async function handleFreeFormChat(ctx: Context): Promise<void> {
+    const text = ctx.message?.text?.trim();
+    if (!text || text.startsWith("/") || !ctx.chat) return;
+
+    await ctx.replyWithChatAction("typing");
+
+    try {
+        const user = await getCurrentUser().catch(() => undefined);
+        const response = await askGeminiAgent(ctx.chat.id, text, user?.name);
+        await replyAiChunksSafe(ctx, response);
+    } catch (err: any) {
+        console.error("Error in handleFreeFormChat:", err);
+        await ctx.reply(`❌ <b>AI Error:</b> ${err.message || "Failed to process message."}`, { parse_mode: "HTML" });
     }
 }
