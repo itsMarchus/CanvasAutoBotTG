@@ -61,6 +61,7 @@ async function main() {
     // 6. Start Telegram bot long-polling
     console.log("🤖 Telegram bot is now polling for messages...");
     bot.start({
+        drop_pending_updates: true,
         onStart: (botInfo) => {
             console.log(`✨ Bot @${botInfo.username} is online and running! (Timezone: ${env.TIMEZONE})`);
         },
