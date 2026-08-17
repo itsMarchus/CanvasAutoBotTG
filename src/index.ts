@@ -3,6 +3,7 @@ import { env } from "./config/env.js";
 import { getCurrentUser } from "./canvas/client.js";
 import { bot, setupBotCommands } from "./bot/bot.js";
 import { notifier } from "./services/notifier.js";
+import { storage } from "./services/storage.js";
 
 async function main() {
     console.log("🚀 Initializing Canvas Telegram Assistant Bot...");
@@ -34,7 +35,13 @@ async function main() {
         console.error("Please verify that CANVAS_BASE_URL and CANVAS_ACCESS_TOKEN are valid in your .env");
     }
 
-    // 3. Register Telegram bot command menu
+    // 3. Register Telegram bot command menu & seed owner ID
+    if (env.TELEGRAM_ALLOWED_USER_ID) {
+        await storage.setTargetChatId(env.TELEGRAM_ALLOWED_USER_ID);
+        await storage.setAllowedUserId(env.TELEGRAM_ALLOWED_USER_ID);
+        console.log(`🎯 Notification target Telegram ID configured: ${env.TELEGRAM_ALLOWED_USER_ID}`);
+    }
+
     try {
         await setupBotCommands();
         console.log("📋 Telegram bot commands menu registered.");

@@ -20,6 +20,7 @@ import {
     handleStudyPlan,
     handleClearChat,
     handleFreeFormChat,
+    handleTestNotify,
 } from "./commands.js";
 import { handleCallbackQuery } from "./callbacks.js";
 
@@ -54,6 +55,12 @@ bot.use(async (ctx: Context, next: NextFunction) => {
         }
         return;
     }
+
+    // Automatically persist target chat ID and allowed user ID in storage
+    if (ctx.chat?.id) {
+        await storage.setTargetChatId(ctx.chat.id);
+    }
+    await storage.setAllowedUserId(fromId);
 
     return next();
 });
@@ -113,6 +120,7 @@ bot.command("submitted", handleCompleted);
 bot.command("announcements", handleAnnouncements);
 bot.command("status", handleStatus);
 bot.command("sync", handleStatus);
+bot.command("testnotify", handleTestNotify);
 
 // 5. Inline keyboard callback queries
 bot.on("callback_query:data", handleCallbackQuery);

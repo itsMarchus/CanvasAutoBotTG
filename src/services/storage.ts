@@ -33,6 +33,7 @@ export interface IStorageService {
     markAssignmentSeen(id: number): Promise<void>;
     getSentDueReminder(assignmentId: number): Promise<{ reminder3h?: boolean; reminder1h?: boolean } | undefined>;
     markDueReminderSent(assignmentId: number, type: "reminder3h" | "reminder1h"): Promise<void>;
+    logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: string): Promise<void>;
     updateSyncTimestamp(coursesCount?: number): Promise<void>;
     getChatHistory(chatId: number, limit?: number): Promise<ChatMessage[]>;
     appendChatMessage(chatId: number, role: "user" | "model" | "system", content: string): Promise<void>;
@@ -104,7 +105,7 @@ export class FileStorageService implements IStorageService {
 
     public async getTargetChatId(): Promise<number | null> {
         const state = await this.getState();
-        return state.targetChatId;
+        return state.targetChatId || env.TELEGRAM_ALLOWED_USER_ID || null;
     }
 
     public async setTargetChatId(chatId: number): Promise<void> {
@@ -115,7 +116,7 @@ export class FileStorageService implements IStorageService {
 
     public async getAllowedUserId(): Promise<number | null> {
         const state = await this.getState();
-        return state.allowedUserId;
+        return state.allowedUserId || env.TELEGRAM_ALLOWED_USER_ID || null;
     }
 
     public async setAllowedUserId(userId: number): Promise<void> {
@@ -169,6 +170,12 @@ export class FileStorageService implements IStorageService {
         }
         state.sentDueReminders[key]![type] = true;
         await this.saveState(state);
+    }
+
+    public async logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: string): Promise<void> {
+        if (notificationType === "reminder3h" || notificationType === "reminder1h") {
+            await this.markDueReminderSent(canvasId, notificationType);
+        }
     }
 
     public async updateSyncTimestamp(coursesCount?: number): Promise<void> {
@@ -231,8 +238,8 @@ export class SupabaseStorageService implements IStorageService {
         }
 
         return {
-            targetChatId: userRes.data?.telegram_chat_id ? Number(userRes.data.telegram_chat_id) : null,
-            allowedUserId: userRes.data?.telegram_user_id ? Number(userRes.data.telegram_user_id) : null,
+            targetChatId: userRes.data?.telegram_chat_id ? Number(userRes.data.telegram_chat_id) : (env.TELEGRAM_ALLOWED_USER_ID || null),
+            allowedUserId: userRes.data?.telegram_user_id ? Number(userRes.data.telegram_user_id) : (env.TELEGRAM_ALLOWED_USER_ID || null),
             seenAnnouncementIds: seenAnnouncementsRes.data ? seenAnnouncementsRes.data.map((r) => Number(r.canvas_id)) : [],
             seenAssignmentIds: seenAssignmentsRes.data ? seenAssignmentsRes.data.map((r) => Number(r.canvas_id)) : [],
             sentDueReminders,
@@ -247,7 +254,10 @@ export class SupabaseStorageService implements IStorageService {
 
     public async getTargetChatId(): Promise<number | null> {
         const { data } = await this.client.from("bot_users").select("telegram_chat_id").limit(1).maybeSingle();
-        return data?.telegram_chat_id ? Number(data.telegram_chat_id) : null;
+        if (data?.telegram_chat_id) {
+            return Number(data.telegram_chat_id);
+        }
+        return env.TELEGRAM_ALLOWED_USER_ID || null;
     }
 
     public async setTargetChatId(chatId: number): Promise<void> {
@@ -255,13 +265,16 @@ export class SupabaseStorageService implements IStorageService {
         if (existing.data?.id) {
             await this.client.from("bot_users").update({ telegram_chat_id: chatId, updated_at: new Date().toISOString() }).eq("id", existing.data.id);
         } else {
-            await this.client.from("bot_users").insert({ telegram_chat_id: chatId });
+            await this.client.from("bot_users").insert({ telegram_chat_id: chatId, telegram_user_id: chatId });
         }
     }
 
     public async getAllowedUserId(): Promise<number | null> {
         const { data } = await this.client.from("bot_users").select("telegram_user_id").limit(1).maybeSingle();
-        return data?.telegram_user_id ? Number(data.telegram_user_id) : null;
+        if (data?.telegram_user_id) {
+            return Number(data.telegram_user_id);
+        }
+        return env.TELEGRAM_ALLOWED_USER_ID || null;
     }
 
     public async setAllowedUserId(userId: number): Promise<void> {
@@ -325,8 +338,12 @@ export class SupabaseStorageService implements IStorageService {
     }
 
     public async markDueReminderSent(assignmentId: number, type: "reminder3h" | "reminder1h"): Promise<void> {
+        await this.logNotification("assignment", assignmentId, type);
+    }
+
+    public async logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: string): Promise<void> {
         await this.client.from("notification_logs").upsert(
-            { item_type: "assignment", canvas_id: assignmentId, notification_type: type },
+            { item_type: itemType, canvas_id: canvasId, notification_type: notificationType, sent_at: new Date().toISOString() },
             { onConflict: "item_type, canvas_id, notification_type" }
         );
     }

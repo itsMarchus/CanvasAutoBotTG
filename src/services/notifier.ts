@@ -58,7 +58,11 @@ export class CanvasNotifier {
         try {
             const state = await storage.getState();
             const isInitialRun = state.lastSyncAt === null;
-            const targetChatId = await storage.getTargetChatId();
+            const targetChatId = (await storage.getTargetChatId()) || env.TELEGRAM_ALLOWED_USER_ID || null;
+
+            if (!targetChatId) {
+                console.warn("⚠️ [Notifier] No Telegram target chat ID registered yet. Notifications cannot be sent until a user starts the bot or TELEGRAM_ALLOWED_USER_ID is set.");
+            }
 
             // 1. Fetch active courses
             const activeCourses = await getActiveCourses();
@@ -83,7 +87,8 @@ export class CanvasNotifier {
                                 parse_mode: "HTML",
                                 link_preview_options: { is_disabled: true },
                             });
-                            console.log(`📢 Dispatched announcement notification: "${announcement.title}"`);
+                            await storage.logNotification("announcement", announcement.id, "new_announcement");
+                            console.log(`📢 Dispatched announcement notification: "${announcement.title}" to chat ${targetChatId}`);
                         } catch (sendErr) {
                             console.error(`Failed to send announcement notification #${announcement.id}:`, sendErr);
                         }
@@ -108,7 +113,8 @@ export class CanvasNotifier {
                                 parse_mode: "HTML",
                                 link_preview_options: { is_disabled: true },
                             });
-                            console.log(`📝 Dispatched new assignment notification: "${assignment.name}"`);
+                            await storage.logNotification("assignment", assignment.id, "new_assignment");
+                            console.log(`📝 Dispatched new assignment notification: "${assignment.name}" to chat ${targetChatId}`);
                         } catch (sendErr) {
                             console.error(`Failed to send new assignment alert #${assignment.id}:`, sendErr);
                         }
@@ -134,7 +140,7 @@ export class CanvasNotifier {
                                     link_preview_options: { is_disabled: true },
                                 });
                                 await storage.markDueReminderSent(assignment.id, "reminder1h");
-                                console.log(`🚨 Dispatched 1-Hour deadline alert for "${assignment.name}"`);
+                                console.log(`🚨 Dispatched 1-Hour deadline alert for "${assignment.name}" to chat ${targetChatId}`);
                             } catch (sendErr) {
                                 console.error(`Failed to send 1h deadline alert for #${assignment.id}:`, sendErr);
                             }
@@ -148,7 +154,7 @@ export class CanvasNotifier {
                                     link_preview_options: { is_disabled: true },
                                 });
                                 await storage.markDueReminderSent(assignment.id, "reminder3h");
-                                console.log(`⏰ Dispatched 3-Hour deadline alert for "${assignment.name}"`);
+                                console.log(`⏰ Dispatched 3-Hour deadline alert for "${assignment.name}" to chat ${targetChatId}`);
                             } catch (sendErr) {
                                 console.error(`Failed to send 3h deadline alert for #${assignment.id}:`, sendErr);
                             }

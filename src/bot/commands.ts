@@ -1,4 +1,5 @@
 import type { CommandContext, Context } from "grammy";
+import { env } from "../config/env.js";
 import { getCurrentUser } from "../canvas/client.js";
 import { getActiveCourses } from "../canvas/courses.js";
 import {
@@ -528,4 +529,21 @@ export async function handleFreeFormChat(ctx: Context): Promise<void> {
         console.error("Error in handleFreeFormChat:", err);
         await ctx.reply(`❌ <b>AI Error:</b> ${err.message || "Failed to process message."}`, { parse_mode: "HTML" });
     }
+}
+
+/**
+ * /testnotify: Sends a test notification to verify push delivery and database logging.
+ */
+export async function handleTestNotify(ctx: CommandContext<Context>): Promise<void> {
+    const targetChatId = ctx.chat.id;
+    await storage.setTargetChatId(targetChatId);
+
+    const testMsg = `🔔 <b>Test Push Notification Successful!</b> ✅\n\n` +
+        `• <b>Registered Target Chat ID:</b> <code>${targetChatId}</code>\n` +
+        `• <b>Time:</b> ${new Date().toLocaleString("en-US", { timeZone: env.TIMEZONE })}\n` +
+        `• <b>Schedule:</b> Background polling runs every 10 mins (<code>${env.POLL_INTERVAL_CRON}</code>)\n\n` +
+        `Your bot is fully connected to deliver real-time announcement, assignment, and deadline alerts directly to this chat!`;
+
+    await ctx.reply(testMsg, { parse_mode: "HTML" });
+    await storage.logNotification("assignment", 999999, "test_notification");
 }
