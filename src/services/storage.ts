@@ -4,12 +4,14 @@ import { existsSync } from "node:fs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../config/env.js";
 
+export type NotificationType = "new_item" | "reminder_3h" | "reminder_1h";
+
 export interface BotState {
     targetChatId: number | null;
     allowedUserId: number | null;
     seenAnnouncementIds: number[];
     seenAssignmentIds: number[];
-    sentDueReminders: Record<string, { reminder3h?: boolean; reminder1h?: boolean }>;
+    sentDueReminders: Record<string, { reminder_3h?: boolean; reminder_1h?: boolean }>;
     lastSyncAt: string | null;
     coursesCount: number;
 }
@@ -31,9 +33,9 @@ export interface IStorageService {
     markAnnouncementSeen(id: number): Promise<void>;
     isAssignmentSeen(id: number): Promise<boolean>;
     markAssignmentSeen(id: number): Promise<void>;
-    getSentDueReminder(assignmentId: number): Promise<{ reminder3h?: boolean; reminder1h?: boolean } | undefined>;
-    markDueReminderSent(assignmentId: number, type: "reminder3h" | "reminder1h"): Promise<void>;
-    logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: string): Promise<void>;
+    getSentDueReminder(assignmentId: number): Promise<{ reminder_3h?: boolean; reminder_1h?: boolean } | undefined>;
+    markDueReminderSent(assignmentId: number, type: "reminder_3h" | "reminder_1h"): Promise<void>;
+    logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: NotificationType): Promise<void>;
     updateSyncTimestamp(coursesCount?: number): Promise<void>;
     getChatHistory(chatId: number, limit?: number): Promise<ChatMessage[]>;
     appendChatMessage(chatId: number, role: "user" | "model" | "system", content: string): Promise<void>;
@@ -157,12 +159,12 @@ export class FileStorageService implements IStorageService {
         }
     }
 
-    public async getSentDueReminder(assignmentId: number): Promise<{ reminder3h?: boolean; reminder1h?: boolean } | undefined> {
+    public async getSentDueReminder(assignmentId: number): Promise<{ reminder_3h?: boolean; reminder_1h?: boolean } | undefined> {
         const state = await this.getState();
         return state.sentDueReminders[String(assignmentId)];
     }
 
-    public async markDueReminderSent(assignmentId: number, type: "reminder3h" | "reminder1h"): Promise<void> {
+    public async markDueReminderSent(assignmentId: number, type: "reminder_3h" | "reminder_1h"): Promise<void> {
         const state = await this.getState();
         const key = String(assignmentId);
         if (!state.sentDueReminders[key]) {
@@ -172,8 +174,8 @@ export class FileStorageService implements IStorageService {
         await this.saveState(state);
     }
 
-    public async logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: string): Promise<void> {
-        if (notificationType === "reminder3h" || notificationType === "reminder1h") {
+    public async logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: NotificationType): Promise<void> {
+        if (notificationType === "reminder_3h" || notificationType === "reminder_1h") {
             await this.markDueReminderSent(canvasId, notificationType);
         }
     }
@@ -227,13 +229,13 @@ export class SupabaseStorageService implements IStorageService {
             this.client.from("system_sync_state").select("last_sync_at, courses_count").eq("id", 1).maybeSingle(),
         ]);
 
-        const sentDueReminders: Record<string, { reminder3h?: boolean; reminder1h?: boolean }> = {};
+        const sentDueReminders: Record<string, { reminder_3h?: boolean; reminder_1h?: boolean }> = {};
         if (remindersRes.data) {
             for (const row of remindersRes.data) {
                 const key = String(row.canvas_id);
                 if (!sentDueReminders[key]) sentDueReminders[key] = {};
-                if (row.notification_type === "reminder3h") sentDueReminders[key]!.reminder3h = true;
-                if (row.notification_type === "reminder1h") sentDueReminders[key]!.reminder1h = true;
+                if (row.notification_type === "reminder_3h" || row.notification_type === "reminder3h") sentDueReminders[key]!.reminder_3h = true;
+                if (row.notification_type === "reminder_1h" || row.notification_type === "reminder1h") sentDueReminders[key]!.reminder_1h = true;
             }
         }
 
@@ -320,32 +322,39 @@ export class SupabaseStorageService implements IStorageService {
         );
     }
 
-    public async getSentDueReminder(assignmentId: number): Promise<{ reminder3h?: boolean; reminder1h?: boolean } | undefined> {
-        const { data } = await this.client
+    public async getSentDueReminder(assignmentId: number): Promise<{ reminder_3h?: boolean; reminder_1h?: boolean } | undefined> {
+        const { data, error } = await this.client
             .from("notification_logs")
             .select("notification_type")
             .eq("item_type", "assignment")
             .eq("canvas_id", assignmentId);
 
+        if (error) {
+            console.error(`[Storage] Error fetching notification_logs for assignment #${assignmentId}:`, error.message);
+        }
+
         if (!data || data.length === 0) return undefined;
 
-        const result: { reminder3h?: boolean; reminder1h?: boolean } = {};
+        const result: { reminder_3h?: boolean; reminder_1h?: boolean } = {};
         for (const row of data) {
-            if (row.notification_type === "reminder3h") result.reminder3h = true;
-            if (row.notification_type === "reminder1h") result.reminder1h = true;
+            if (row.notification_type === "reminder_3h" || row.notification_type === "reminder3h") result.reminder_3h = true;
+            if (row.notification_type === "reminder_1h" || row.notification_type === "reminder1h") result.reminder_1h = true;
         }
         return result;
     }
 
-    public async markDueReminderSent(assignmentId: number, type: "reminder3h" | "reminder1h"): Promise<void> {
+    public async markDueReminderSent(assignmentId: number, type: "reminder_3h" | "reminder_1h"): Promise<void> {
         await this.logNotification("assignment", assignmentId, type);
     }
 
-    public async logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: string): Promise<void> {
-        await this.client.from("notification_logs").upsert(
+    public async logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: NotificationType): Promise<void> {
+        const { error } = await this.client.from("notification_logs").upsert(
             { item_type: itemType, canvas_id: canvasId, notification_type: notificationType, sent_at: new Date().toISOString() },
             { onConflict: "item_type, canvas_id, notification_type" }
         );
+        if (error) {
+            console.error(`[Storage] Error recording notification_log (${itemType} #${canvasId}, ${notificationType}):`, error.message);
+        }
     }
 
     public async updateSyncTimestamp(coursesCount?: number): Promise<void> {

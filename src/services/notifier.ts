@@ -14,6 +14,7 @@ import {
 export class CanvasNotifier {
     private cronJob: Cron | null = null;
     private isSyncing = false;
+    private inMemorySentReminders: Set<string> = new Set();
 
     /**
      * Starts the periodic background cron monitor.
@@ -87,7 +88,7 @@ export class CanvasNotifier {
                                 parse_mode: "HTML",
                                 link_preview_options: { is_disabled: true },
                             });
-                            await storage.logNotification("announcement", announcement.id, "new_announcement");
+                            await storage.logNotification("announcement", announcement.id, "new_item");
                             console.log(`📢 Dispatched announcement notification: "${announcement.title}" to chat ${targetChatId}`);
                         } catch (sendErr) {
                             console.error(`Failed to send announcement notification #${announcement.id}:`, sendErr);
@@ -113,7 +114,7 @@ export class CanvasNotifier {
                                 parse_mode: "HTML",
                                 link_preview_options: { is_disabled: true },
                             });
-                            await storage.logNotification("assignment", assignment.id, "new_assignment");
+                            await storage.logNotification("assignment", assignment.id, "new_item");
                             console.log(`📝 Dispatched new assignment notification: "${assignment.name}" to chat ${targetChatId}`);
                         } catch (sendErr) {
                             console.error(`Failed to send new assignment alert #${assignment.id}:`, sendErr);
@@ -132,28 +133,30 @@ export class CanvasNotifier {
                         const sentReminders = (await storage.getSentDueReminder(assignment.id)) || {};
 
                         // 1-Hour Urgency Trigger (between 0 and 1.25 hours)
-                        if (diffHours <= 1.25 && !sentReminders.reminder1h) {
+                        if (diffHours <= 1.25 && !sentReminders.reminder_1h && !this.inMemorySentReminders.has(`${assignment.id}:reminder_1h`)) {
                             try {
                                 const text = formatDueReminderNotification(assignment, Math.max(1, Math.round(diffHours)));
                                 await bot.api.sendMessage(targetChatId, text, {
                                     parse_mode: "HTML",
                                     link_preview_options: { is_disabled: true },
                                 });
-                                await storage.markDueReminderSent(assignment.id, "reminder1h");
+                                await storage.markDueReminderSent(assignment.id, "reminder_1h");
+                                this.inMemorySentReminders.add(`${assignment.id}:reminder_1h`);
                                 console.log(`🚨 Dispatched 1-Hour deadline alert for "${assignment.name}" to chat ${targetChatId}`);
                             } catch (sendErr) {
                                 console.error(`Failed to send 1h deadline alert for #${assignment.id}:`, sendErr);
                             }
                         }
                         // 3-Hour Urgency Trigger (between 1.25 and 3.25 hours)
-                        else if (diffHours <= 3.25 && diffHours > 1.25 && !sentReminders.reminder3h) {
+                        else if (diffHours <= 3.25 && diffHours > 1.25 && !sentReminders.reminder_3h && !this.inMemorySentReminders.has(`${assignment.id}:reminder_3h`)) {
                             try {
                                 const text = formatDueReminderNotification(assignment, Math.round(diffHours));
                                 await bot.api.sendMessage(targetChatId, text, {
                                     parse_mode: "HTML",
                                     link_preview_options: { is_disabled: true },
                                 });
-                                await storage.markDueReminderSent(assignment.id, "reminder3h");
+                                await storage.markDueReminderSent(assignment.id, "reminder_3h");
+                                this.inMemorySentReminders.add(`${assignment.id}:reminder_3h`);
                                 console.log(`⏰ Dispatched 3-Hour deadline alert for "${assignment.name}" to chat ${targetChatId}`);
                             } catch (sendErr) {
                                 console.error(`Failed to send 3h deadline alert for #${assignment.id}:`, sendErr);

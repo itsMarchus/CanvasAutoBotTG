@@ -545,5 +545,5 @@ export async function handleTestNotify(ctx: CommandContext<Context>): Promise<vo
         `Your bot is fully connected to deliver real-time announcement, assignment, and deadline alerts directly to this chat!`;
 
     await ctx.reply(testMsg, { parse_mode: "HTML" });
-    await storage.logNotification("assignment", 999999, "test_notification");
+    await storage.logNotification("assignment", 999999, "new_item");
 }
