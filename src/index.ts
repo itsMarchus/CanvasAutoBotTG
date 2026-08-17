@@ -65,13 +65,28 @@ async function main() {
     process.once("SIGINT", () => shutdown("SIGINT"));
     process.once("SIGTERM", () => shutdown("SIGTERM"));
 
-    // 6. Start Telegram bot long-polling
+    // 6. Start Telegram bot long-polling with rollover resilience
     console.log("🤖 Telegram bot is now polling for messages...");
-    bot.start({
-        drop_pending_updates: true,
-        onStart: (botInfo) => {
-            console.log(`✨ Bot @${botInfo.username} is online and running! (Timezone: ${env.TIMEZONE})`);
-        },
+    const startPollingWithRetry = async () => {
+        try {
+            await bot.start({
+                drop_pending_updates: true,
+                onStart: (botInfo) => {
+                    console.log(`✨ Bot @${botInfo.username} is online and running! (Timezone: ${env.TIMEZONE})`);
+                },
+            });
+        } catch (err: any) {
+            if (err?.error_code === 409 || String(err?.message || "").includes("409")) {
+                console.warn("⚠️ 409 Conflict: previous container is shutting down. Auto-reconnecting in 4 seconds...");
+                await new Promise((resolve) => setTimeout(resolve, 4000));
+                return startPollingWithRetry();
+            }
+            throw err;
+        }
+    };
+
+    startPollingWithRetry().catch((err) => {
+        console.error("Fatal polling error:", err);
     });
 }
 
