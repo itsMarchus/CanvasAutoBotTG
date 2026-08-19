@@ -1,5 +1,5 @@
 {
-  "name": "canvas-telegram-agent",
+  "name": "canvas-auto-bot-tg",
   "version": "1.0.0",
   "type": "module",
   "description": "An intelligent, self-hosted Telegram assistant for Canvas LMS with real-time push alerts, 3h/1h deadline reminders, and Gemini AI problem solving.",
