@@ -267,6 +267,43 @@ canvas-telegram-agent/
 
 ---
 
+## 🛠️ Developer Customization Guide
+
+This project is built with clean, modular TypeScript and is designed to be easily customized and extended for your specific academic or institutional needs.
+
+### 1. ⏰ Customizing Due Date Reminder Windows
+By default, the background monitor triggers alerts at **3 hours** and **1 hour** before a deadline.
+* **File:** [`src/services/notifier.ts`](src/services/notifier.ts)
+* To customize the reminder thresholds (e.g. adding a 24-hour reminder or switching to 2-hour warnings), edit the deadline calculation blocks inside `runSyncCycle()` in `src/services/notifier.ts`:
+```typescript
+// Example: Add a 24-Hour Reminder Alert (between 23h and 25h before due)
+if (diffHours <= 25 && diffHours > 23 && !sentReminders.reminder_24h) {
+    const text = formatDueReminderNotification(assignment, 24);
+    await bot.api.sendMessage(targetChatId, text, { parse_mode: "HTML" });
+    await storage.markDueReminderSent(assignment.id, "reminder_24h");
+}
+```
+
+### 2. 🧠 Customizing AI Personality & System Prompts
+* **File:** [`src/ai/systemPrompt.ts`](src/ai/systemPrompt.ts)
+* You can easily adjust the assistant's persona, language, tone, strictness regarding academic integrity, or customize how it handles attachments and problem breakdowns inside `buildSystemPrompt()`.
+
+### 3. 🧩 Adding New AI Tools (Function Calling)
+The Gemini Agent uses native function calling to interact with Canvas in real time. You can add new capabilities (e.g. fetching grades, quizzes, syllabus, modules, or file downloads):
+1. **Define Tool Schema**: Add the new tool definition to `canvasToolDeclarations` in [`src/ai/tools.ts`](src/ai/tools.ts).
+2. **Implement Execution Logic**: Add the handler case in `executeCanvasTool()` in [`src/ai/tools.ts`](src/ai/tools.ts).
+3. The AI will automatically decide when to invoke your new tool based on natural conversation with the student!
+
+### 4. 📱 Adding Custom Telegram Commands & Keyboards
+* **New Commands:** Add command handlers in [`src/bot/commands.ts`](src/bot/commands.ts) and register them with `bot.command("yourcommand", handler)` in [`src/bot/bot.ts`](src/bot/bot.ts).
+* **Inline Keyboards:** Customize or create new button menus in [`src/bot/keyboards.ts`](src/bot/keyboards.ts) and handle their callback clicks in [`src/bot/callbacks.ts`](src/bot/callbacks.ts).
+
+### 5. 🎨 Customizing Notification Templates & Formatting
+* **File:** [`src/bot/formatters.ts`](src/bot/formatters.ts)
+* All Telegram message templates (announcement alerts, assignment cards, deadline warnings, and HTML conversion) are located in `src/bot/formatters.ts`. You can modify the text layout, emoji accents, or HTML tags to match your desired aesthetic.
+
+---
+
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome!
