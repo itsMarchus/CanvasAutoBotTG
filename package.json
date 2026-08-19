@@ -2,17 +2,25 @@
   "name": "canvas-telegram-agent",
   "version": "1.0.0",
   "type": "module",
-  "description": "",
-  "main": "index.js",
+  "description": "An intelligent, self-hosted Telegram assistant for Canvas LMS with real-time push alerts, 3h/1h deadline reminders, and Gemini AI problem solving.",
+  "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts"
+    "start": "node dist/index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "canvas-lms",
+    "telegram-bot",
+    "gemini-ai",
+    "academic-assistant",
+    "student-productivity",
+    "supabase",
+    "typescript"
+  ],
+  "author": "Marchus Deligero",
+  "license": "MIT",
   "packageManager": "pnpm@10.30.3",
   "devDependencies": {
     "@types/node": "^26.2.0",

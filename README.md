@@ -1,517 +1,284 @@
-# Canvas Telegram Academic Assistant
+# 🎓 Canvas Telegram AI Assistant
 
-## Project Overview
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22.x-green.svg?logo=node.js)](https://nodejs.org/)
+[![grammY](https://img.shields.io/badge/Telegram_Bot-grammY-24A1DE.svg?logo=telegram)](https://grammy.dev/)
+[![Google Gemini](https://img.shields.io/badge/AI-Google_Gemini_Flash-orange.svg?logo=google)](https://aistudio.google.com/)
+[![Supabase](https://img.shields.io/badge/Database-Supabase_PostgreSQL-3ECF8E.svg?logo=supabase)](https://supabase.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker)](https://www.docker.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This project is a personal academic notification and assistance system that connects **Canvas LMS** with **Telegram**.
-
-The system will monitor relevant information from Canvas, such as assignments and announcements, and send notifications to a Telegram bot. Later, the Telegram bot will also be connected to **Gemini** so the user can interact with an AI assistant directly through Telegram.
-
-The project will be developed incrementally. We will first make the **Telegram bot** work independently, then learn and integrate the **Canvas API**, and only after the Canvas → Telegram system is stable will we integrate Gemini.
-
----
-
-# Main Goal
-
-Build a cloud-hosted system that can:
-
-1. Receive relevant academic information from Canvas.
-2. Notify the user through Telegram.
-3. Allow the user to interact with the Telegram bot.
-4. Eventually use Gemini as an AI assistant through Telegram.
-5. Eventually retrieve relevant Canvas information and provide it to Gemini as context.
-
-The intended final flow is:
-
-```text
-                         Canvas LMS
-                             │
-                       Canvas API
-                             │
-                             ▼
-                  ┌─────────────────────┐
-                  │   Backend Service   │
-                  │                     │
-                  │ Node.js + TypeScript│
-                  └──────────┬──────────┘
-                             │
-                    Telegram Bot API
-                             │
-                             ▼
-                         Telegram
-                             │
-                      User interaction
-                             │
-                             ▼
-                           Gemini
-```
+An intelligent, 24/7 self-hosted Telegram assistant for **Canvas LMS**. Delivers real-time push notifications for new announcements and assignments, urgent **3-hour and 1-hour deadline countdown alerts**, and features an autonomous **Google Gemini AI Agent** with function-calling capabilities to explain instructions, solve assignment questions, and generate personalized study plans.
 
 ---
 
-# Development Philosophy
+## ✨ Key Features
 
-Do **not** build the entire system at once.
+* 🔔 **Proactive Push Notifications**: Automatically alerts you on Telegram whenever an instructor posts a new assignment or course announcement (polled every 10 minutes).
+* ⏰ **Multi-Stage Deadline Reminders**:
+  * **3-Hour Warning**: Sent between 3 hours and 1 hour 15 minutes before the due date.
+  * **1-Hour Urgent Alert**: Sent when less than 75 minutes remain.
+  * Automatic suppression for assignments you have already submitted in Canvas.
+* 🤖 **Gemini AI Academic Agent**:
+  * **Function Calling / Tools**: The AI can query your enrolled courses, search assignments by name or ID, inspect full instructions, and check due dates in real time.
+  * **`/explain <id>`**: Breaks down complex assignment prompts into step-by-step checklists and rubrics.
+  * **`/answer <id>`**: Generates comprehensive, step-by-step answers and explanations for text-based assignment questions.
+  * **`/studyplan`**: Analyzes all upcoming active tasks and builds a realistic 7-day prioritized study schedule.
+  * **Free-Form Chat**: Ask anything in plain English (e.g. *"What homework is due this Friday?"* or *"Summarize the latest math announcement"*).
+  * **Multi-Turn Memory**: Remembers previous turns in the chat, persisted via Supabase PostgreSQL.
+  * **Multi-Model Fallback Engine**: Automatic retry with exponential backoff and automatic failover across models (`gemini-flash-latest` ➔ `gemini-flash-lite-latest` ➔ `gemini-3.1-flash-lite`) to guarantee 99.9% uptime on the free tier.
+* 📱 **Interactive Inline Keyboards**: Browse courses, view upcoming tasks, inspect details, and trigger AI explanations with tap-friendly Telegram buttons.
+* 🛡️ **Built-in Security**: Single-user owner lock (`TELEGRAM_ALLOWED_USER_ID`) preventing unauthorized users from accessing your academic data.
+* ☁️ **Cloud & Docker Ready**: Optimized for 1-click 24/7 cloud hosting on Render, Railway, Fly.io, or VPS with health check endpoints and zero cold-start crashes.
 
-The project should be developed in small, independently testable stages.
+---
 
-## Phase 1 — Telegram Bot
-
-First, build a basic Telegram bot.
-
-Goals:
-
-* Create a Telegram bot using BotFather.
-* Securely store the bot token.
-* Connect the Node.js application to Telegram.
-* Send messages through the Telegram Bot API.
-* Receive messages from Telegram.
-* Implement basic commands such as `/start` and `/help`.
-
-Initial architecture:
-
-```text
-User
-  │
-  ▼
-Telegram
-  │
-  ▼
-Telegram Bot API
-  │
-  ▼
-Node.js + TypeScript
-```
-
-The first successful milestone is:
+## 🏗️ System Architecture
 
 ```text
-User sends:
-/start
-
-Bot responds:
-Hello! Your Canvas Academic Assistant is working.
+  ┌─────────────────────────────────────────────────────────────┐
+  │                         Canvas LMS                          │
+  │     (Courses, Assignments, Announcements, Submissions)      │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │ REST API (Bearer Token)
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │                 Canvas Telegram AI Agent                    │
+  │                     (Node.js + TS)                          │
+  │                                                             │
+  │  ┌──────────────────────┐        ┌───────────────────────┐  │
+  │  │ Background Notifier  │        │  Gemini AI Subagent   │  │
+  │  │  (Cron Polling Loop) │        │ (Function Calling)    │  │
+  │  └──────────┬───────────┘        └───────────┬───────────┘  │
+  └─────────────┼────────────────────────────────┼──────────────┘
+                │                                │
+    Deduplication & State                  Tool Execution &
+    (RLS Enabled)                          Conversation Memory
+                ▼                                ▼
+  ┌───────────────────────────┐    ┌───────────────────────────┐
+  │    Supabase PostgreSQL    │    │      Google Gemini API    │
+  │ (seen_items, logs, users) │    │   (gemini-flash-latest)   │
+  └───────────────────────────┘    └───────────────────────────┘
+                │                                │
+                └───────────────┬────────────────┘
+                                │ Telegram Bot API (grammY)
+                                ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │                     Telegram App (User)                     │
+  │         (Push Alerts, Interactive Buttons, AI Chat)         │
+  └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-# Phase 2 — Learn and Integrate Canvas API
+## 🔑 Prerequisites (100% Free Tier Compatible)
 
-After Telegram is working, learn the Canvas API independently.
+Before setting up, gather the following 4 free credentials:
 
-Goals:
-
-* Understand Canvas API authentication.
-* Understand Canvas API endpoints.
-* Retrieve the current user.
-* Retrieve enrolled courses.
-* Retrieve course assignments.
-* Retrieve assignment details.
-* Retrieve announcements.
-* Understand Canvas API pagination.
-* Understand permissions and API scopes.
-* Understand rate limits.
-* Understand Canvas webhooks/Live Events where applicable.
-
-Initial Canvas architecture:
-
-```text
-Node.js + TypeScript
-        │
-        ▼
-    Canvas API
-        │
-        ▼
-    Canvas LMS
-```
-
-The first Canvas milestone is successfully retrieving information such as the authenticated user and enrolled courses.
+1. **Telegram Bot Token**:
+   * Message [@BotFather](https://t.me/BotFather) on Telegram and create a new bot using `/newbot`. Copy the API Token.
+   * *(Optional)* Message [@userinfobot](https://t.me/userinfobot) to get your numeric Telegram User ID.
+2. **Canvas Access Token**:
+   * Log into your Canvas account (e.g. `https://canvas.instructure.com` or your university's Canvas portal).
+   * Go to **Account** ➔ **Settings** ➔ Scroll to **Approved Integrations** ➔ Click **+ New Access Token**.
+   * Copy the generated token.
+3. **Supabase PostgreSQL Database**:
+   * Create a free project at [supabase.com](https://supabase.com/).
+   * Under **Project Settings ➔ API**, copy your **Project URL** and **Service Role Secret (service_role)**.
+4. **Google Gemini API Key**:
+   * Get a free API key at [Google AI Studio](https://aistudio.google.com/).
 
 ---
 
-# Phase 3 — Connect Canvas to Telegram
+## 🗄️ One-Click Database Setup
 
-Once both systems work independently, connect them.
+1. Open your Supabase Dashboard and navigate to the **SQL Editor**.
+2. Click **New Query**.
+3. Copy and paste the entire contents of [`scripts/supabase_schema.sql`](scripts/supabase_schema.sql).
+4. Click **Run**.
 
-Target architecture:
-
-```text
-Canvas LMS
-    │
-    │ Canvas API / Events
-    ▼
-Node.js Backend
-    │
-    │ Telegram Bot API
-    ▼
-Telegram
-    │
-    ▼
-User
-```
-
-Example notification:
-
-```text
-🔔 New Canvas Assignment
-
-Course:
-IT 214 - Database Management
-
-Assignment:
-Database Normalization Activity
-
-Due:
-August 20, 2026 at 11:59 PM
-
-[Open in Canvas]
-```
-
-The system should eventually detect relevant new or changed Canvas content and send appropriate Telegram notifications.
+This will automatically create all 5 required tables with Row-Level Security (RLS) policies:
+* `bot_users`: Stores registered chat IDs and user settings.
+* `seen_items`: Prevents duplicate announcement and assignment alerts.
+* `notification_logs`: Ensures 3h and 1h deadline reminders trigger exactly once.
+* `system_sync_state`: Tracks background polling health and course counts.
+* `chat_history`: Stores multi-turn conversational context for Gemini AI.
 
 ---
 
-# Phase 4 — Notification Reliability
+## 🚀 Quick Start (Local Setup)
 
-The original motivation for this project is that Canvas notifications are sometimes reportedly not reaching students.
+### 1. Clone the repository
+```bash
+git clone https://github.com/your-username/canvas-telegram-agent.git
+cd canvas-telegram-agent
+```
 
-Therefore, this system should eventually act as a **secondary notification channel**, not as a replacement for Canvas itself.
+### 2. Install dependencies
+```bash
+pnpm install
+# or npm install / yarn install
+```
 
-The system should consider:
+### 3. Configure environment variables
+Create a `.env` file from the example:
+```bash
+cp .env.example .env
+```
 
-* Duplicate notifications
-* Failed Telegram deliveries
-* Assignment updates
-* Due-date changes
-* Deleted assignments
-* Announcements
-* Notification history
-* Retry behavior
-* Rate limits
-* Logging
+Edit `.env` with your credentials:
+```env
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
+CANVAS_BASE_URL=https://canvas.instructure.com/
+CANVAS_ACCESS_TOKEN=29471~your_canvas_access_token_here
+TIMEZONE=Asia/Manila
+POLL_INTERVAL_CRON=*/10 * * * *
+TELEGRAM_ALLOWED_USER_ID=8285969041
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-flash-latest
+```
 
-The database may eventually contain records such as:
+### 4. Run the bot
+```bash
+# Development (auto-reload on change)
+pnpm dev
 
-```text
-notification_id
-canvas_event_id
-canvas_user_id
-course_id
-assignment_id
-notification_type
-telegram_chat_id
-status
-sent_at
-created_at
+# Production build & run
+pnpm build
+pnpm start
 ```
 
 ---
 
-# Phase 5 — Gemini Integration
+## ☁️ 24/7 Cloud Deployment (Render / Docker)
 
-Gemini will **not** be integrated during the initial development.
+This project includes a production multi-stage [`Dockerfile`](Dockerfile) and a lightweight HTTP health-check server on port 3000/10000.
 
-Only integrate Gemini after the Canvas → Telegram pipeline is stable.
+### Deploying on [Render.com](https://render.com/) (Free / Web Service)
 
-Target architecture:
+1. Fork or push this repository to your GitHub account.
+2. Log into Render and click **New +** ➔ **Web Service**.
+3. Connect your repository.
+4. Set the following options:
+   * **Runtime**: `Docker` (or Node with build command `pnpm install && pnpm build` and start command `node dist/index.js`).
+   * **Plan**: `Free`.
+5. Under **Environment Variables**, add the keys from your `.env` file (`TELEGRAM_BOT_TOKEN`, `CANVAS_BASE_URL`, `CANVAS_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `TIMEZONE`, `TELEGRAM_ALLOWED_USER_ID`).
+6. Click **Deploy Web Service**.
 
-```text
-User
-  │
-  │ Telegram message
-  ▼
-Telegram Bot
-  │
-  ▼
-Node.js Backend
-  │
-  ├───────────────┐
-  │               │
-  ▼               ▼
-Canvas API      Gemini API
-  │               │
-  │               │
-  └───────┬───────┘
-          ▼
-       Response
-          │
-          ▼
-       Telegram
-```
+### ⚡ Keeping the Bot Awake 24/7 on Render Free Tier (UptimeRobot)
 
-The eventual assistant should be able to help the user understand academic information available through Canvas.
+> [!IMPORTANT]
+> Render's Free Web Services automatically spin down (sleep) after 15 minutes of inactivity if no incoming HTTP traffic is detected.
 
-Potential capabilities:
+To keep your bot running continuously 24/7 for free, set up a free monitor using [UptimeRobot](https://uptimerobot.com/) (or [cron-job.org](https://cron-job.org/)) to ping your Render service's built-in HTTP health endpoint:
 
-* Explain assignment instructions.
-* Summarize announcements.
-* Explain course material.
-* Answer questions about deadlines.
-* Help brainstorm responses.
-* Explain difficult concepts.
-* Review or provide feedback on a student's draft.
-* Use relevant Canvas information as context when answering.
+1. Create a free account at [uptimerobot.com](https://uptimerobot.com/).
+2. Click **+ Add New Monitor**.
+3. Configure the monitor:
+   * **Monitor Type**: `HTTP(s)`
+   * **Friendly Name**: `Canvas Telegram Bot`
+   * **URL (or IP)**: `https://your-service-name.onrender.com` *(Replace with your primary Render URL)*
+   * **Monitoring Interval**: `Every 5 minutes`
+4. Click **Create Monitor**.
 
-The AI should not automatically submit assignments or impersonate the student.
+🎉 **Your bot will now stay awake and actively poll Canvas 24/7 without ever going to sleep!**
 
 ---
 
-# Phase 6 — Canvas-Aware AI
+## ⚙️ Environment Variables Reference
 
-Eventually, Gemini should not rely only on its general knowledge.
-
-When the user asks something related to a Canvas course, the backend should retrieve relevant information from Canvas and provide it as context to Gemini.
-
-Example:
-
-```text
-User:
-"What exactly does our Database Activity 3 require?"
-
-        │
-        ▼
-
-Telegram Bot
-
-        │
-        ▼
-
-Backend
-
-        │
-        ├── Search Canvas assignments
-        │
-        └── Retrieve Activity 3
-
-        │
-        ▼
-
-Relevant Canvas information
-
-        │
-        ▼
-
-Gemini
-
-        │
-        ▼
-
-Explanation
-
-        │
-        ▼
-
-Telegram
-```
-
-This approach is intended to make the assistant answer based on the user's actual course information rather than guessing.
+| Variable | Required | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `TELEGRAM_BOT_TOKEN` | **Yes** | — | Bot token obtained from [@BotFather](https://t.me/BotFather). |
+| `CANVAS_BASE_URL` | **Yes** | — | URL of your Canvas instance (e.g. `https://canvas.instructure.com/`). |
+| `CANVAS_ACCESS_TOKEN` | **Yes** | — | Personal access token generated in Canvas settings. |
+| `SUPABASE_URL` | **Yes** | — | Supabase project URL (`https://xyz.supabase.co`). |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Yes** | — | Supabase `service_role` key (required for backend RLS bypass). |
+| `GEMINI_API_KEY` | **Yes** | — | Google Gemini API key from Google AI Studio. |
+| `GEMINI_MODEL` | No | `gemini-flash-latest` | Model used for AI reasoning & function calling. |
+| `TELEGRAM_ALLOWED_USER_ID` | No | `(auto-locked)` | Numeric Telegram User ID of the owner. If omitted, the first user to run `/start` becomes the owner. |
+| `TIMEZONE` | No | `Asia/Manila` | IANA Timezone for deadline formatting (e.g. `America/New_York`, `UTC`). |
+| `POLL_INTERVAL_CRON` | No | `*/10 * * * *` | Cron expression for Canvas background polling (default: every 10 mins). |
+| `PORT` | No | `3000` | HTTP port for cloud health-check ping server. |
 
 ---
 
-# Technology Stack
+## 🤖 Command Reference
 
-## Current
-
-* Node.js
-* TypeScript
-* pnpm
-* Telegram Bot API
-
-## Planned
-
-* Canvas REST API
-* Canvas webhooks / Live Events where appropriate
-* Gemini API
-* PostgreSQL / Supabase
-* Cloud hosting
-
-Potential architecture:
-
-```text
-Frontend
-   │
-   │ Not initially required
-   │
-Backend
-   │
-   ├── Canvas API
-   ├── Telegram Bot API
-   ├── Gemini API
-   └── PostgreSQL / Supabase
-```
+| Command | Description |
+| :--- | :--- |
+| `/start` | Welcome message, bot status check, and chat registration. |
+| `/help` | Comprehensive user guide and command list. |
+| `/todo` or `/unsubmitted` | View all pending and unsubmitted assignments. |
+| `/courses` | Interactive list of all enrolled active Canvas courses. |
+| `/assignments` | List all upcoming assignments sorted by due date. |
+| `/announcements` | View recent course announcements across all active classes. |
+| `/all` | View complete catalog of all course assignments. |
+| `/completed` | View list of submitted/graded assignments. |
+| `/past` | View past-due and archived assignments. |
+| `/nodate` | View assignments that have no deadline set. |
+| `/assignment <id>` | View complete details, points, and attachments for an assignment. |
+| `/ask <question>` | Ask Gemini AI about your courses, homework, or schedule. |
+| `/explain <id or name>` | AI breakdown of assignment instructions with rubrics and checklist. |
+| `/answer <id or name>` | AI step-by-step solution for text-based assignment prompts. |
+| `/studyplan` | AI-generated 7-day personalized study timetable based on real deadlines. |
+| `/clear` or `/reset` | Clear conversational chat memory with Gemini. |
+| `/status` or `/sync` | Display sync health, total courses, and timestamp of last check. |
+| `/testnotify` | Dispatches an instant test push notification to verify delivery. |
 
 ---
 
-# Project Structure
-
-The project will gradually evolve into something similar to:
+## 📁 Project Structure
 
 ```text
 canvas-telegram-agent/
-│
+├── Dockerfile                  # Multi-stage production container definition
+├── package.json                # Project dependencies and npm scripts
+├── tsconfig.json               # Strict TypeScript configuration
+├── scripts/
+│   └── supabase_schema.sql     # 1-click database schema & RLS setup
 ├── src/
-│   │
-│   ├── index.ts
-│   │
-│   ├── telegram/
-│   │   ├── bot.ts
-│   │   ├── handlers.ts
-│   │   └── messages.ts
-│   │
+│   ├── index.ts                # Application entrypoint & HTTP health server
+│   ├── ai/
+│   │   ├── agent.ts            # Gemini conversational agent & fallback engine
+│   │   ├── systemPrompt.ts     # System prompts & instruction guidelines
+│   │   └── tools.ts            # Gemini Function-Calling tools (Canvas query API)
+│   ├── bot/
+│   │   ├── bot.ts              # grammY bot initialization & security middleware
+│   │   ├── callbacks.ts        # Interactive inline keyboard handlers
+│   │   ├── commands.ts         # Telegram command logic (/todo, /ask, /answer, etc.)
+│   │   ├── formatters.ts       # HTML-safe Telegram formatters & Turndown engine
+│   │   └── keyboards.ts        # Dynamic inline keyboard generators
 │   ├── canvas/
-│   │   ├── client.ts
-│   │   ├── assignments.ts
-│   │   ├── courses.ts
-│   │   └── announcements.ts
-│   │
-│   ├── gemini/
-│   │   └── client.ts
-│   │
-│   ├── database/
-│   │   └── ...
-│   │
-│   └── config/
-│       └── env.ts
-│
-├── .env
-├── .env.example
-├── .gitignore
-├── package.json
-├── pnpm-lock.yaml
-├── tsconfig.json
+│   │   ├── client.ts           # Canvas LMS REST API client
+│   │   ├── courses.ts          # Course query helpers
+│   │   ├── assignments.ts      # Assignment & submission fetchers
+│   │   ├── announcements.ts    # Course announcement fetchers
+│   │   └── types.ts            # Strict Canvas API TypeScript interfaces
+│   ├── config/
+│   │   └── env.ts              # Zod environment variable schema & validation
+│   └── services/
+│       ├── notifier.ts         # Background cron monitor & deadline reminder engine
+│       └── storage.ts          # Supabase PostgreSQL / Local File storage layer
 └── README.md
 ```
 
-Do not create all of these directories immediately. Add them as the corresponding phase is implemented.
+---
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome!
+
+1. Fork the repository.
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+4. Push to the branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
 
 ---
 
-# Security Requirements
+## 📄 License
 
-Sensitive credentials must never be committed to Git.
-
-Examples:
-
-```text
-TELEGRAM_BOT_TOKEN
-CANVAS_ACCESS_TOKEN
-GEMINI_API_KEY
-DATABASE_URL
-```
-
-These should be stored in environment variables.
-
-Example:
-
-```env
-TELEGRAM_BOT_TOKEN=
-CANVAS_BASE_URL=
-CANVAS_ACCESS_TOKEN=
-GEMINI_API_KEY=
-DATABASE_URL=
-```
-
-`.env` must be included in `.gitignore`.
-
-An `.env.example` file may contain variable names but must never contain real credentials.
-
----
-
-# Important Development Rules
-
-## 1. Do not skip phases
-
-Do not integrate Gemini before the Canvas → Telegram system is functional.
-
-## 2. Keep services separated
-
-Canvas, Telegram, Gemini, and the database should have separate modules.
-
-Avoid putting the entire application inside `index.ts`.
-
-## 3. Use TypeScript
-
-Use TypeScript throughout the backend.
-
-Avoid unnecessary JavaScript files.
-
-## 4. Learn the APIs
-
-Do not immediately hide all API behavior behind third-party libraries.
-
-During the learning phase, understand the underlying HTTP requests, authentication, responses, and errors.
-
-## 5. Keep the first implementation simple
-
-The first version should prioritize:
-
-* Correctness
-* Understandability
-* Security
-* Good project structure
-
-Do not add unnecessary features early.
-
-## 6. Do not assume Canvas permissions
-
-Canvas access depends on the school's configuration and the authenticated user's permissions.
-
-Do not assume that every Canvas API endpoint will be available.
-
-## 7. Do not expose credentials
-
-Never print API keys or bot tokens in logs.
-
-Never commit them to GitHub.
-
----
-
-# Current Development Status
-
-## Phase 1 — Telegram Bot
-
-Status: **Starting**
-
-Current goal:
-
-```text
-Create Node.js + TypeScript project
-        ↓
-Create Telegram bot
-        ↓
-Connect Telegram Bot API
-        ↓
-Implement /start
-        ↓
-Test communication
-```
-
-## Phase 2 — Canvas API
-
-Status: Not started
-
-## Phase 3 — Canvas → Telegram
-
-Status: Not started
-
-## Phase 4 — Notification Reliability
-
-Status: Not started
-
-## Phase 5 — Gemini
-
-Status: Not started
-
-## Phase 6 — Canvas-Aware AI
-
-Status: Not started
-
----
-
-# First Milestone
-
-The immediate goal is:
-
-> **Create a working Telegram bot using Node.js and TypeScript that can receive `/start` and respond to the user.**
-
-Do not work on Canvas or Gemini until this milestone works.
-
-After that, proceed to learning the Canvas API.
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
