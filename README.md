@@ -110,8 +110,8 @@ This will automatically create all 5 required tables with Row-Level Security (RL
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/your-username/canvas-telegram-agent.git
-cd canvas-telegram-agent
+git clone https://github.com/itsMarchus/CanvasAutoBotTG.git
+cd CanvasAutoBotTG
 ```
 
 ### 2. Install dependencies
@@ -306,16 +306,27 @@ The Gemini Agent uses native function calling to interact with Canvas in real ti
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome!
+Contributions, bug reports, and feature requests are very welcome!
 
-1. Fork the repository.
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-4. Push to the branch (`git push origin feature/AmazingFeature`).
-5. Open a Pull Request.
+1. **Star the Repo**: If you find this project useful, please consider giving it a ⭐ on GitHub!
+2. **Report Issues**: Open an issue on GitHub if you find a bug or have a feature suggestion.
+3. **Submit a Pull Request**:
+   * Fork the repository.
+   * Create your feature branch (`git checkout -b feature/AmazingFeature`).
+   * Commit your changes (`git commit -m 'feat: add AmazingFeature'`).
+   * Verify TypeScript compilation (`pnpm build`).
+   * Push to your branch (`git push origin feature/AmazingFeature`).
+   * Open a Pull Request on GitHub.
+
+---
+
+## 👤 Author
+
+* **Marchus Deligero**
+  * GitHub: [@itsMarchus](https://github.com/itsMarchus)
 
 ---
 
 ## 📄 License
 
-Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more details.
