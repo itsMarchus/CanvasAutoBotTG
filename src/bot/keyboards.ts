@@ -1,5 +1,6 @@
 import { InlineKeyboard } from "grammy";
-import type { CanvasCourse, CanvasAssignment } from "../canvas/types.js";
+import type { CanvasCourse, CanvasAssignment, CanvasDiscussionTopic } from "../canvas/types.js";
+import type { EnrichedDiscussionTopic } from "../canvas/discussions.js";
 
 /**
  * Builds an inline keyboard listing courses with buttons to view details.
@@ -27,6 +28,8 @@ export function buildCourseActionKeyboard(courseId: number): InlineKeyboard {
         .text("📂 All Assignments", `course_all:${courseId}`)
         .text("📢 Announcements", `course_announce:${courseId}`)
         .row()
+        .text("💬 Discussions & Activities", `course_disc:${courseId}`)
+        .row()
         .text("« Back to Courses", "back_courses");
 }
 
@@ -47,6 +50,31 @@ export function buildAssignmentSelectionKeyboard(
     });
 
     keyboard.text("« Back to Course Menu", `course:${courseId}`);
+    return keyboard;
+}
+
+/**
+ * Builds an interactive keyboard with buttons to view specific discussion topics.
+ */
+export function buildDiscussionSelectionKeyboard(
+    discussions: EnrichedDiscussionTopic[] | CanvasDiscussionTopic[],
+    courseId?: number,
+    maxButtons: number = 8
+): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    const subset = discussions.slice(0, maxButtons);
+    subset.forEach((d, index) => {
+        const label = d.title.length > 28 ? `${d.title.slice(0, 26)}...` : d.title;
+        const cId = (d as EnrichedDiscussionTopic).courseId || courseId || 0;
+        keyboard.text(`💬 ${index + 1}. ${label}`, `disc_view:${cId}:${d.id}`).row();
+    });
+
+    if (courseId) {
+        keyboard.text("« Back to Course Menu", `course:${courseId}`);
+    } else {
+        keyboard.text("« Back to Courses", "back_courses");
+    }
     return keyboard;
 }
 
@@ -78,6 +106,51 @@ export function buildAssignmentDetailKeyboard(
     }
 
     return keyboard;
+}
+
+/**
+ * Builds an action keyboard for a single discussion topic detail view.
+ */
+export function buildDiscussionDetailKeyboard(
+    htmlUrl: string,
+    courseId?: number,
+    topicId?: number
+): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    if (topicId) {
+        keyboard
+            .text("🤖 Explain Prompt", `ai_explain_disc:${courseId || 0}:${topicId}`)
+            .text("💡 Draft Response / Answer", `ai_answer_disc:${courseId || 0}:${topicId}`)
+            .row();
+    }
+
+    if (htmlUrl) {
+        keyboard.url("👉 Open Discussion in Canvas", htmlUrl);
+    }
+
+    if (courseId) {
+        keyboard.row().text("« Back to Course Menu", `course:${courseId}`);
+    } else {
+        keyboard.row().text("« Back to Discussions", "refresh_discussions");
+    }
+
+    return keyboard;
+}
+
+/**
+ * Builds a notification keyboard for newly posted discussions.
+ */
+export function buildNewDiscussionNotificationKeyboard(
+    htmlUrl: string,
+    courseId: number,
+    topicId: number
+): InlineKeyboard {
+    return new InlineKeyboard()
+        .text("📖 View Prompt", `disc_view:${courseId}:${topicId}`)
+        .text("🤖 AI Solution", `ai_answer_disc:${courseId}:${topicId}`)
+        .row()
+        .url("👉 Open in Canvas", htmlUrl);
 }
 
 /**

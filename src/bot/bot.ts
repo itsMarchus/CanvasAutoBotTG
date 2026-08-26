@@ -13,6 +13,8 @@ import {
     handleTodo,
     handleCompleted,
     handleAnnouncements,
+    handleDiscussions,
+    handleDiscussionDetail,
     handleStatus,
     handleAsk,
     handleExplain,
@@ -78,6 +80,7 @@ export async function setupBotCommands(): Promise<void> {
         { command: "todo", description: "View pending tasks needing action" },
         { command: "courses", description: "View active courses with interactive menu" },
         { command: "announcements", description: "View latest course announcements" },
+        { command: "discussions", description: "View course discussion topics & activities" },
         { command: "allassignments", description: "View master list of all assignments" },
         { command: "clear", description: "Clear Gemini conversation memory" },
         { command: "status", description: "View bot, Canvas & AI status" },
@@ -116,8 +119,12 @@ bot.command("unsubmitted", handleTodo);
 bot.command("completed", handleCompleted);
 bot.command("submitted", handleCompleted);
 
-// 4. Announcements & system commands
+// 4. Discussions & Announcements & system commands
 bot.command("announcements", handleAnnouncements);
+bot.command("discussions", handleDiscussions);
+bot.command("forums", handleDiscussions);
+bot.command("discussion", handleDiscussionDetail);
+bot.command("forum", handleDiscussionDetail);
 bot.command("status", handleStatus);
 bot.command("sync", handleStatus);
 bot.command("testnotify", handleTestNotify);

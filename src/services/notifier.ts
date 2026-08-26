@@ -5,11 +5,14 @@ import { storage } from "./storage.js";
 import { getActiveCourses } from "../canvas/courses.js";
 import { getAllAssignments, isAssignmentSubmitted } from "../canvas/assignments.js";
 import { getLatestAnnouncements } from "../canvas/announcements.js";
+import { getAllDiscussions } from "../canvas/discussions.js";
 import {
     formatNewAnnouncementNotification,
     formatNewAssignmentNotification,
+    formatNewDiscussionNotification,
     formatDueReminderNotification,
 } from "../bot/formatters.js";
+import { buildNewDiscussionNotificationKeyboard } from "../bot/keyboards.js";
 
 export class CanvasNotifier {
     private cronJob: Cron | null = null;
@@ -166,9 +169,37 @@ export class CanvasNotifier {
                 }
             }
 
+            // 4. Check Discussions & Activities
+            const discussions = await getAllDiscussions(activeCourses, 15);
+            for (const discussion of discussions) {
+                const isSeen = await storage.isDiscussionSeen(discussion.id);
+                if (!isSeen) {
+                    if (!isInitialRun && targetChatId) {
+                        try {
+                            const text = formatNewDiscussionNotification(discussion);
+                            const replyMarkup = buildNewDiscussionNotificationKeyboard(
+                                discussion.html_url || discussion.url,
+                                discussion.courseId || 0,
+                                discussion.id
+                            );
+                            await bot.api.sendMessage(targetChatId, text, {
+                                parse_mode: "HTML",
+                                link_preview_options: { is_disabled: true },
+                                reply_markup: replyMarkup,
+                            });
+                            await storage.logNotification("discussion", discussion.id, "new_item");
+                            console.log(`💬 Dispatched new discussion notification: "${discussion.title}" to chat ${targetChatId}`);
+                        } catch (sendErr) {
+                            console.error(`Failed to send discussion alert #${discussion.id}:`, sendErr);
+                        }
+                    }
+                    await storage.markDiscussionSeen(discussion.id);
+                }
+            }
+
             await storage.updateSyncTimestamp(activeCourses.length);
             const elapsedMs = Date.now() - startTime;
-            console.log(`✅ Canvas sync cycle complete (${elapsedMs}ms). Active courses: ${activeCourses.length}, Assignments: ${assignments.length}`);
+            console.log(`✅ Canvas sync cycle complete (${elapsedMs}ms). Active courses: ${activeCourses.length}, Assignments: ${assignments.length}, Discussions: ${discussions.length}`);
         } catch (err) {
             console.error("❌ Error running Canvas sync cycle:", err);
         } finally {

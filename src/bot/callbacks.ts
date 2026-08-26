@@ -3,12 +3,15 @@ import { getCurrentUser } from "../canvas/client.js";
 import { getActiveCourses, getCourseById } from "../canvas/courses.js";
 import { getCourseAssignments, getAssignmentDetails } from "../canvas/assignments.js";
 import { getLatestAnnouncements } from "../canvas/announcements.js";
+import { getCourseDiscussions, getDiscussionDetails } from "../canvas/discussions.js";
 import { askGeminiAgent } from "../ai/agent.js";
 import {
     escapeHtml,
     formatAssignmentList,
     formatAssignmentDetail,
     formatAnnouncementList,
+    formatDiscussionList,
+    formatDiscussionDetail,
     formatCourseList,
     formatAiResponseChunks,
 } from "./formatters.js";
@@ -17,6 +20,8 @@ import {
     buildCourseActionKeyboard,
     buildAssignmentSelectionKeyboard,
     buildAssignmentDetailKeyboard,
+    buildDiscussionSelectionKeyboard,
+    buildDiscussionDetailKeyboard,
     buildBackToCoursesKeyboard,
 } from "./keyboards.js";
 
@@ -278,6 +283,124 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
                 reply_markup: buildBackToCoursesKeyboard(),
                 link_preview_options: { is_disabled: true },
             });
+            return;
+        }
+
+        // 9. View discussions for a specific course
+        if (data.startsWith("course_disc:")) {
+            const courseId = parseInt(data.split(":")[1] || "", 10);
+            if (isNaN(courseId)) return;
+
+            await ctx.answerCallbackQuery({ text: "Fetching discussion topics..." });
+            const [course, discussions] = await Promise.all([
+                getCourseById(courseId),
+                getCourseDiscussions(courseId, 15),
+            ]);
+
+            const enriched = discussions.map((d) => ({
+                ...d,
+                courseName: course?.name,
+                courseCode: course?.course_code || course?.name,
+            }));
+
+            const text = formatDiscussionList(enriched);
+            const keyboard = enriched.length > 0
+                ? buildDiscussionSelectionKeyboard(enriched, courseId)
+                : buildBackToCoursesKeyboard();
+
+            await ctx.editMessageText(text, {
+                parse_mode: "HTML",
+                reply_markup: keyboard,
+                link_preview_options: { is_disabled: true },
+            });
+            return;
+        }
+
+        // 10. View specific discussion topic details
+        if (data.startsWith("disc_view:")) {
+            const parts = data.split(":");
+            const courseId = parseInt(parts[1] || "", 10);
+            const topicId = parseInt(parts[2] || "", 10);
+
+            if (isNaN(topicId)) return;
+
+            await ctx.answerCallbackQuery({ text: "Loading discussion prompt..." });
+            const topic = await getDiscussionDetails(courseId, topicId);
+
+            if (!topic) {
+                await ctx.reply("❌ <b>Discussion topic details not found.</b>", { parse_mode: "HTML" });
+                return;
+            }
+
+            const text = formatDiscussionDetail(topic);
+            await ctx.editMessageText(text, {
+                parse_mode: "HTML",
+                reply_markup: buildDiscussionDetailKeyboard(topic.html_url || topic.url, courseId, topic.id),
+                link_preview_options: { is_disabled: true },
+            });
+            return;
+        }
+
+        // 11. AI Explain Discussion Topic Prompt
+        if (data.startsWith("ai_explain_disc:")) {
+            const parts = data.split(":");
+            const courseId = parseInt(parts[1] || "", 10);
+            const topicId = parseInt(parts[2] || "", 10);
+
+            if (isNaN(topicId)) return;
+
+            await ctx.answerCallbackQuery({ text: "🧠 Gemini is analyzing discussion prompt..." });
+            if (!ctx.chat) return;
+
+            await ctx.replyWithChatAction("typing");
+
+            const prompt = `Please fetch the details and prompt for discussion topic ID ${topicId} in course ID ${courseId}. ` +
+                `Explain the discussion activity clearly, summarize what the professor or prompt is asking for, list all required points to address, and provide guidelines on how to craft a high-scoring post or peer response.`;
+
+            const user = await getCurrentUser().catch(() => undefined);
+            const response = await askGeminiAgent(ctx.chat.id, prompt, user?.name);
+            const chunks = formatAiResponseChunks(response);
+
+            for (const chunk of chunks) {
+                try {
+                    await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+                } catch {
+                    await ctx.reply(chunk, { link_preview_options: { is_disabled: true } });
+                }
+            }
+            return;
+        }
+
+        // 12. AI Draft Answer / Solution for Discussion Activity
+        if (data.startsWith("ai_answer_disc:")) {
+            const parts = data.split(":");
+            const courseId = parseInt(parts[1] || "", 10);
+            const topicId = parseInt(parts[2] || "", 10);
+
+            if (isNaN(topicId)) return;
+
+            await ctx.answerCallbackQuery({ text: "💡 Gemini is generating response..." });
+            if (!ctx.chat) return;
+
+            await ctx.replyWithChatAction("typing");
+
+            const prompt = `Please fetch the full details and prompt for discussion topic ID ${topicId} in course ID ${courseId}. ` +
+                `First, determine if this discussion is an exercise/activity with specific questions or an open discussion forum: ` +
+                `- If it contains exercises, questions, or problems to solve (e.g. PivotTables, queries, code, math), provide the full step-by-step solutions, explanations, and answers! ` +
+                `- If it only references an attached document without text questions, notify the student and ask them to paste questions from the file. ` +
+                `- If it is an open discussion or reflection question, draft a thoughtful, articulate, and well-structured response following academic best practices.`;
+
+            const user = await getCurrentUser().catch(() => undefined);
+            const response = await askGeminiAgent(ctx.chat.id, prompt, user?.name);
+            const chunks = formatAiResponseChunks(response);
+
+            for (const chunk of chunks) {
+                try {
+                    await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+                } catch {
+                    await ctx.reply(chunk, { link_preview_options: { is_disabled: true } });
+                }
+            }
             return;
         }
 

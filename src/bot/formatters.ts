@@ -2,6 +2,7 @@ import { env } from "../config/env.js";
 import type { CanvasCourse, CanvasUser } from "../canvas/types.js";
 import type { EnrichedAssignment } from "../canvas/assignments.js";
 import type { EnrichedAnnouncement } from "../canvas/announcements.js";
+import type { EnrichedDiscussionTopic } from "../canvas/discussions.js";
 import type { BotState } from "../services/storage.js";
 
 import TurndownService from "turndown";
@@ -144,12 +145,14 @@ Here are the commands and features you can use:
 📖 <b>Courses & Updates</b>
 • /courses — List active courses with interactive action buttons
 • /announcements — View latest course announcements
+• /discussions or /forums — View course discussion topics & activities
+• /discussion &lt;id&gt; — View full prompt & instructions for a discussion topic
 
 ⚙️ <b>Bot & System</b>
 • /status — View bot health & sync timestamp
 • /help — Show this help menu
 
-<i>💡 Tip: You will automatically receive notifications for new announcements, newly posted assignments, and deadline countdown reminders (1h & 3h before due date)!</i>`;
+<i>💡 Tip: You will automatically receive push notifications for new announcements, newly posted assignments, new discussion activities, and deadline countdown reminders!</i>`;
 }
 
 /**
@@ -293,6 +296,87 @@ export function formatNewAssignmentNotification(assignment: EnrichedAssignment):
         `${points}` +
         `<b>Due Date:</b> ${formatDueDate(assignment.due_at)}\n\n` +
         `<a href="${assignment.html_url}">👉 View Assignment in Canvas</a>`;
+}
+
+/**
+ * Notification for a newly created Discussion Topic / Forum Activity.
+ */
+export function formatNewDiscussionNotification(discussion: EnrichedDiscussionTopic): string {
+    const course = discussion.courseName ? `<b>Course:</b> ${escapeHtml(discussion.courseName)}\n` : "";
+    const author = discussion.author?.display_name || discussion.user_name ? `<b>Author:</b> ${escapeHtml(discussion.author?.display_name || discussion.user_name || "")}\n` : "";
+    const snippet = cleanHtmlSnippet(discussion.message || "", 280);
+    const initialPostNote = discussion.require_initial_post ? `\n🔒 <i>Requires initial post before replies are visible.</i>` : "";
+
+    return `💬 <b>NEW DISCUSSION / FORUM ACTIVITY</b>\n\n` +
+        `${course}` +
+        `<b>Topic:</b> <a href="${discussion.html_url || discussion.url}">${escapeHtml(discussion.title)}</a>\n` +
+        `${author}` +
+        `<i>"${escapeHtml(snippet)}"</i>` +
+        `${initialPostNote}\n\n` +
+        `<a href="${discussion.html_url || discussion.url}">👉 Open Discussion in Canvas</a>`;
+}
+
+/**
+ * Formats full detailed card for a single discussion topic, including instructions.
+ */
+export function formatDiscussionDetail(discussion: EnrichedDiscussionTopic): string {
+    const course = discussion.courseName
+        ? `📚 <b>Course:</b> ${escapeHtml(discussion.courseName)}\n`
+        : "";
+    const author = discussion.author?.display_name || discussion.user_name
+        ? `👤 <b>Author:</b> ${escapeHtml(discussion.author?.display_name || discussion.user_name || "")}\n`
+        : "";
+    
+    const postedTime = discussion.posted_at || discussion.created_at
+        ? new Date(discussion.posted_at || discussion.created_at).toLocaleString("en-US", {
+            timeZone: env.TIMEZONE,
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+        })
+        : "Unknown";
+
+    const repliesCount = discussion.discussion_subentry_count !== undefined
+        ? `💬 <b>Replies:</b> ${discussion.discussion_subentry_count}\n`
+        : "";
+
+    const lockStatus = discussion.locked ? "🔒 <i>Closed / Locked for replies</i>\n" : "🔓 <i>Open for replies</i>\n";
+
+    const instructionsText = formatInstructionsToTelegramHtml(discussion.message || "", 2200);
+
+    return `💬 <b>${escapeHtml(discussion.title)}</b>\n` +
+        `${course}` +
+        `${author}` +
+        `📅 <b>Posted:</b> ${postedTime}\n` +
+        `${repliesCount}` +
+        `📊 <b>Status:</b> ${lockStatus}\n` +
+        `📖 <b>Instructions / Prompt:</b>\n` +
+        `${instructionsText}\n\n` +
+        `🆔 Discussion ID: <code>${discussion.id}</code>`;
+}
+
+/**
+ * Formats a list of recent course discussions.
+ */
+export function formatDiscussionList(discussions: EnrichedDiscussionTopic[]): string {
+    if (discussions.length === 0) {
+        return `💬 <b>Course Discussions</b>\n\n<i>No active discussion topics found.</i>`;
+    }
+
+    let text = `💬 <b>Course Discussions & Forum Activities</b> (${discussions.length})\n\n`;
+
+    discussions.slice(0, 15).forEach((d, index) => {
+        const course = d.courseCode || d.courseName ? `[${escapeHtml(d.courseCode || d.courseName || "")}] ` : "";
+        const replies = d.discussion_subentry_count !== undefined ? ` (${d.discussion_subentry_count} replies)` : "";
+        text += `${index + 1}. ${course}<b><a href="${d.html_url || d.url}">${escapeHtml(d.title)}</a></b>${replies}\n`;
+    });
+
+    if (discussions.length > 15) {
+        text += `\n<i>... and ${discussions.length - 15} more topics. Use buttons below to inspect.</i>`;
+    }
+
+    return text;
 }
 
 /**

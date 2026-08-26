@@ -85,3 +85,34 @@ export interface CanvasAnnouncement {
     context_code: string; // e.g. "course_12345"
     read_state?: "read" | "unread";
 }
+
+export interface CanvasDiscussionTopic {
+    id: number;
+    title: string;
+    message?: string | null;
+    posted_at?: string | null;
+    created_at: string;
+    last_reply_at?: string | null;
+    delayed_post_at?: string | null;
+    lock_at?: string | null;
+    todo_date?: string | null;
+    assignment_id?: number | null;
+    discussion_type?: "side_comment" | "threaded";
+    user_name?: string;
+    discussion_subentry_count?: number;
+    unread_count?: number;
+    subscribed?: boolean;
+    published?: boolean;
+    locked?: boolean;
+    author?: {
+        id: number;
+        display_name: string;
+        avatar_image_url?: string;
+        html_url?: string;
+    };
+    html_url: string;
+    url: string;
+    pinned?: boolean;
+    require_initial_post?: boolean;
+    is_announcement?: boolean;
+}

@@ -4,13 +4,15 @@ import { existsSync } from "node:fs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../config/env.js";
 
-export type NotificationType = "new_item" | "reminder_3h" | "reminder_1h";
+export type NotificationType = "new_item" | "reminder_3h" | "reminder_1h" | string;
+export type ItemType = "assignment" | "announcement" | "discussion";
 
 export interface BotState {
     targetChatId: number | null;
     allowedUserId: number | null;
     seenAnnouncementIds: number[];
     seenAssignmentIds: number[];
+    seenDiscussionIds: number[];
     sentDueReminders: Record<string, { reminder_3h?: boolean; reminder_1h?: boolean }>;
     lastSyncAt: string | null;
     coursesCount: number;
@@ -33,9 +35,11 @@ export interface IStorageService {
     markAnnouncementSeen(id: number): Promise<void>;
     isAssignmentSeen(id: number): Promise<boolean>;
     markAssignmentSeen(id: number): Promise<void>;
+    isDiscussionSeen(id: number): Promise<boolean>;
+    markDiscussionSeen(id: number): Promise<void>;
     getSentDueReminder(assignmentId: number): Promise<{ reminder_3h?: boolean; reminder_1h?: boolean } | undefined>;
     markDueReminderSent(assignmentId: number, type: "reminder_3h" | "reminder_1h"): Promise<void>;
-    logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: NotificationType): Promise<void>;
+    logNotification(itemType: ItemType, canvasId: number, notificationType: NotificationType): Promise<void>;
     updateSyncTimestamp(coursesCount?: number): Promise<void>;
     getChatHistory(chatId: number, limit?: number): Promise<ChatMessage[]>;
     appendChatMessage(chatId: number, role: "user" | "model" | "system", content: string): Promise<void>;
@@ -47,6 +51,7 @@ const DEFAULT_STATE: BotState = {
     allowedUserId: null,
     seenAnnouncementIds: [],
     seenAssignmentIds: [],
+    seenDiscussionIds: [],
     sentDueReminders: {},
     lastSyncAt: null,
     coursesCount: 0,
@@ -159,6 +164,22 @@ export class FileStorageService implements IStorageService {
         }
     }
 
+    public async isDiscussionSeen(id: number): Promise<boolean> {
+        const state = await this.getState();
+        return state.seenDiscussionIds.includes(id);
+    }
+
+    public async markDiscussionSeen(id: number): Promise<void> {
+        const state = await this.getState();
+        if (!state.seenDiscussionIds.includes(id)) {
+            state.seenDiscussionIds.push(id);
+            if (state.seenDiscussionIds.length > 500) {
+                state.seenDiscussionIds = state.seenDiscussionIds.slice(-500);
+            }
+            await this.saveState(state);
+        }
+    }
+
     public async getSentDueReminder(assignmentId: number): Promise<{ reminder_3h?: boolean; reminder_1h?: boolean } | undefined> {
         const state = await this.getState();
         return state.sentDueReminders[String(assignmentId)];
@@ -174,7 +195,7 @@ export class FileStorageService implements IStorageService {
         await this.saveState(state);
     }
 
-    public async logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: NotificationType): Promise<void> {
+    public async logNotification(itemType: ItemType, canvasId: number, notificationType: NotificationType): Promise<void> {
         if (notificationType === "reminder_3h" || notificationType === "reminder_1h") {
             await this.markDueReminderSent(canvasId, notificationType);
         }
@@ -221,10 +242,11 @@ export class SupabaseStorageService implements IStorageService {
     }
 
     public async getState(): Promise<BotState> {
-        const [userRes, seenAnnouncementsRes, seenAssignmentsRes, remindersRes, syncRes] = await Promise.all([
+        const [userRes, seenAnnouncementsRes, seenAssignmentsRes, seenDiscussionsRes, remindersRes, syncRes] = await Promise.all([
             this.client.from("bot_users").select("telegram_chat_id, telegram_user_id").limit(1).maybeSingle(),
             this.client.from("seen_items").select("canvas_id").eq("item_type", "announcement"),
             this.client.from("seen_items").select("canvas_id").eq("item_type", "assignment"),
+            this.client.from("seen_items").select("canvas_id").eq("item_type", "discussion"),
             this.client.from("notification_logs").select("canvas_id, notification_type").eq("item_type", "assignment"),
             this.client.from("system_sync_state").select("last_sync_at, courses_count").eq("id", 1).maybeSingle(),
         ]);
@@ -244,6 +266,7 @@ export class SupabaseStorageService implements IStorageService {
             allowedUserId: userRes.data?.telegram_user_id ? Number(userRes.data.telegram_user_id) : (env.TELEGRAM_ALLOWED_USER_ID || null),
             seenAnnouncementIds: seenAnnouncementsRes.data ? seenAnnouncementsRes.data.map((r) => Number(r.canvas_id)) : [],
             seenAssignmentIds: seenAssignmentsRes.data ? seenAssignmentsRes.data.map((r) => Number(r.canvas_id)) : [],
+            seenDiscussionIds: seenDiscussionsRes.data ? seenDiscussionsRes.data.map((r) => Number(r.canvas_id)) : [],
             sentDueReminders,
             lastSyncAt: syncRes.data?.last_sync_at || null,
             coursesCount: syncRes.data?.courses_count || 0,
@@ -322,6 +345,23 @@ export class SupabaseStorageService implements IStorageService {
         );
     }
 
+    public async isDiscussionSeen(id: number): Promise<boolean> {
+        const { data } = await this.client
+            .from("seen_items")
+            .select("id")
+            .eq("item_type", "discussion")
+            .eq("canvas_id", id)
+            .maybeSingle();
+        return Boolean(data);
+    }
+
+    public async markDiscussionSeen(id: number): Promise<void> {
+        await this.client.from("seen_items").upsert(
+            { item_type: "discussion", canvas_id: id },
+            { onConflict: "item_type, canvas_id" }
+        );
+    }
+
     public async getSentDueReminder(assignmentId: number): Promise<{ reminder_3h?: boolean; reminder_1h?: boolean } | undefined> {
         const { data, error } = await this.client
             .from("notification_logs")
@@ -347,7 +387,7 @@ export class SupabaseStorageService implements IStorageService {
         await this.logNotification("assignment", assignmentId, type);
     }
 
-    public async logNotification(itemType: "assignment" | "announcement", canvasId: number, notificationType: NotificationType): Promise<void> {
+    public async logNotification(itemType: ItemType, canvasId: number, notificationType: NotificationType): Promise<void> {
         const { error } = await this.client.from("notification_logs").upsert(
             { item_type: itemType, canvas_id: canvasId, notification_type: notificationType, sent_at: new Date().toISOString() },
             { onConflict: "item_type, canvas_id, notification_type" }

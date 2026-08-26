@@ -13,6 +13,7 @@ import {
     findAssignmentById,
 } from "../canvas/assignments.js";
 import { getLatestAnnouncements } from "../canvas/announcements.js";
+import { getAllDiscussions, findDiscussionById, getDiscussionDetails } from "../canvas/discussions.js";
 import { storage } from "../services/storage.js";
 import { askGeminiAgent } from "../ai/agent.js";
 import {
@@ -22,10 +23,17 @@ import {
     formatAssignmentListChunks,
     formatAssignmentDetail,
     formatAnnouncementList,
+    formatDiscussionList,
+    formatDiscussionDetail,
     formatStatusMessage,
     formatAiResponseChunks,
 } from "./formatters.js";
-import { buildCoursesKeyboard, buildAssignmentDetailKeyboard } from "./keyboards.js";
+import {
+    buildCoursesKeyboard,
+    buildAssignmentDetailKeyboard,
+    buildDiscussionSelectionKeyboard,
+    buildDiscussionDetailKeyboard,
+} from "./keyboards.js";
 
 /**
  * Safely sends AI markdown/HTML response chunks with plain text fallback if parsing errors occur.
@@ -371,6 +379,78 @@ export async function handleAnnouncements(ctx: CommandContext<Context>): Promise
     } catch (error) {
         console.error("Error in /announcements:", error);
         await ctx.reply("❌ <b>Failed to fetch announcements from Canvas.</b>", { parse_mode: "HTML" });
+    }
+}
+
+/**
+ * /discussions or /forums: Lists active course discussion topics and activities.
+ */
+export async function handleDiscussions(ctx: CommandContext<Context>): Promise<void> {
+    await ctx.replyWithChatAction("typing");
+    const arg = ctx.match?.trim();
+    const courseId = arg && !isNaN(Number(arg)) ? Number(arg) : undefined;
+
+    try {
+        const activeCourses = await getActiveCourses();
+        const targetCourses = courseId ? activeCourses.filter((c) => c.id === courseId) : activeCourses;
+
+        const discussions = await getAllDiscussions(targetCourses, 15);
+        const text = formatDiscussionList(discussions);
+
+        if (discussions.length > 0) {
+            const keyboard = buildDiscussionSelectionKeyboard(discussions, courseId);
+            await ctx.reply(text, {
+                parse_mode: "HTML",
+                reply_markup: keyboard,
+                link_preview_options: { is_disabled: true },
+            });
+        } else {
+            await ctx.reply(text, {
+                parse_mode: "HTML",
+                link_preview_options: { is_disabled: true },
+            });
+        }
+    } catch (error) {
+        console.error("Error in /discussions:", error);
+        await ctx.reply("❌ <b>Failed to fetch discussion topics from Canvas.</b>", { parse_mode: "HTML" });
+    }
+}
+
+/**
+ * /discussion <id>: Displays full details and instructions for a single discussion topic.
+ */
+export async function handleDiscussionDetail(ctx: CommandContext<Context>): Promise<void> {
+    const rawId = ctx.match?.trim();
+    if (!rawId || isNaN(Number(rawId))) {
+        await ctx.reply("ℹ️ <b>Please specify a numeric Discussion ID.</b>\nExample: <code>/discussion 6096</code>", {
+            parse_mode: "HTML",
+        });
+        return;
+    }
+
+    const topicId = Number(rawId);
+    await ctx.replyWithChatAction("typing");
+
+    try {
+        const topic = await findDiscussionById(topicId);
+        if (!topic) {
+            await ctx.reply(`❌ <b>Discussion topic #${topicId} not found in your active courses.</b>`, {
+                parse_mode: "HTML",
+            });
+            return;
+        }
+
+        const text = formatDiscussionDetail(topic);
+        const keyboard = buildDiscussionDetailKeyboard(topic.html_url || topic.url, topic.courseId, topic.id);
+
+        await ctx.reply(text, {
+            parse_mode: "HTML",
+            reply_markup: keyboard,
+            link_preview_options: { is_disabled: true },
+        });
+    } catch (error) {
+        console.error("Error in /discussion:", error);
+        await ctx.reply("❌ <b>Failed to fetch discussion details from Canvas.</b>", { parse_mode: "HTML" });
     }
 }
 

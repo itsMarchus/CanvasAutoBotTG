@@ -8,6 +8,12 @@ import {
     getAllAssignments,
 } from "../canvas/assignments.js";
 import { getLatestAnnouncements } from "../canvas/announcements.js";
+import {
+    getCourseDiscussions,
+    getAllDiscussions,
+    getDiscussionDetails,
+    findDiscussionById,
+} from "../canvas/discussions.js";
 import { cleanHtmlSnippet, turndown } from "../bot/formatters.js";
 
 /**
@@ -61,6 +67,44 @@ export const canvasToolDeclarations: FunctionDeclaration[] = [
                 limit: {
                     type: Type.INTEGER,
                     description: "Maximum number of announcements to retrieve (default: 8).",
+                },
+            },
+        },
+    },
+    {
+        name: "get_course_discussions",
+        description: "Retrieves active discussion topics, forum activities, and practice exercises across enrolled Canvas courses.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                courseId: {
+                    type: Type.INTEGER,
+                    description: "Optional Canvas course ID to filter discussions for a specific course.",
+                },
+                limit: {
+                    type: Type.INTEGER,
+                    description: "Maximum number of discussion topics to retrieve (default: 10).",
+                },
+            },
+        },
+    },
+    {
+        name: "get_discussion_details",
+        description: "Fetches full prompt instructions, questions, professor requirements, author, and attached files for a specific discussion topic or forum activity.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                topicId: {
+                    type: Type.INTEGER,
+                    description: "The numeric Canvas discussion topic ID (e.g. 6096).",
+                },
+                topicTitle: {
+                    type: Type.STRING,
+                    description: "The title or keyword of the discussion to search for if ID is unknown.",
+                },
+                courseId: {
+                    type: Type.INTEGER,
+                    description: "Optional course ID if known.",
                 },
             },
         },
@@ -174,6 +218,66 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                     content_preview: cleanHtmlSnippet(ann.message, 500),
                     url: ann.html_url || ann.url,
                 }));
+            }
+
+            case "get_course_discussions": {
+                const limit = Number(args.limit) || 10;
+                let discussions;
+                if (args.courseId) {
+                    discussions = await getCourseDiscussions(Number(args.courseId), limit);
+                } else {
+                    discussions = await getAllDiscussions(undefined, limit);
+                }
+                return discussions.map((d) => ({
+                    id: d.id,
+                    title: d.title,
+                    course: d.courseName || d.courseCode,
+                    author: d.author?.display_name || d.user_name,
+                    posted_at: d.posted_at || d.created_at,
+                    replies_count: d.discussion_subentry_count ?? 0,
+                    content_preview: cleanHtmlSnippet(d.message || "", 400),
+                    url: d.html_url || d.url,
+                }));
+            }
+
+            case "get_discussion_details": {
+                let topic = null;
+                if (args.topicId) {
+                    if (args.courseId) {
+                        topic = await getDiscussionDetails(Number(args.courseId), Number(args.topicId));
+                    } else {
+                        topic = await findDiscussionById(Number(args.topicId));
+                    }
+                } else if (args.topicTitle) {
+                    const all = await getAllDiscussions();
+                    const query = String(args.topicTitle).toLowerCase();
+                    topic = all.find((t) => t.title.toLowerCase().includes(query)) || null;
+                }
+
+                if (!topic) {
+                    return { error: `Discussion topic '${args.topicTitle || args.topicId}' not found.` };
+                }
+
+                const rawMsg = topic.message || "";
+                const attachedFiles = extractAttachedFiles(rawMsg);
+                const markdownText = rawMsg.trim() ? turndown.turndown(rawMsg) : "";
+                const hasSubstantialText = markdownText.trim().length > 20;
+
+                return {
+                    id: topic.id,
+                    title: topic.title,
+                    course: topic.courseName || topic.courseCode,
+                    author: topic.author?.display_name || topic.user_name,
+                    posted_at: topic.posted_at || topic.created_at,
+                    locked: topic.locked ?? false,
+                    require_initial_post: topic.require_initial_post ?? false,
+                    replies_count: topic.discussion_subentry_count ?? 0,
+                    has_text_instructions: hasSubstantialText,
+                    has_attached_files: attachedFiles.length > 0,
+                    attached_files: attachedFiles,
+                    instructions_text: markdownText || "(No prompt text provided)",
+                    url: topic.html_url || topic.url,
+                };
             }
 
             case "get_active_courses": {

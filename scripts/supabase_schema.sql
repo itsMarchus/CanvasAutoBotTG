@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public.bot_users (
 -- Table 2: Seen Items Tracking (Deduplication)
 CREATE TABLE IF NOT EXISTS public.seen_items (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    item_type TEXT NOT NULL CHECK (item_type IN ('assignment', 'announcement')),
+    item_type TEXT NOT NULL CHECK (item_type IN ('assignment', 'announcement', 'discussion')),
     canvas_id BIGINT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT unique_seen_item UNIQUE (item_type, canvas_id)
@@ -30,9 +30,9 @@ CREATE TABLE IF NOT EXISTS public.seen_items (
 -- Table 3: Notification & Reminder Logs
 CREATE TABLE IF NOT EXISTS public.notification_logs (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    item_type TEXT NOT NULL CHECK (item_type IN ('assignment', 'announcement')),
+    item_type TEXT NOT NULL CHECK (item_type IN ('assignment', 'announcement', 'discussion')),
     canvas_id BIGINT NOT NULL,
-    notification_type TEXT NOT NULL CHECK (notification_type IN ('new_item', 'reminder_3h', 'reminder_1h')),
+    notification_type TEXT NOT NULL,
     sent_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT unique_notification_log UNIQUE (item_type, canvas_id, notification_type)
 );

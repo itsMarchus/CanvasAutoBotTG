@@ -14,7 +14,7 @@ An intelligent, 24/7 self-hosted Telegram assistant for **Canvas LMS**. Delivers
 
 ## ✨ Key Features
 
-* 🔔 **Proactive Push Notifications**: Automatically alerts you on Telegram whenever an instructor posts a new assignment or course announcement (polled every 10 minutes).
+* 🔔 **Proactive Push Notifications**: Automatically alerts you on Telegram whenever an instructor posts a new assignment, course announcement, or **discussion forum activity / exercise** (polled every 10 minutes).
 * ⏰ **Multi-Stage Deadline Reminders**:
   * **3-Hour Warning**: Sent between 3 hours and 1 hour 15 minutes before the due date.
   * **1-Hour Urgent Alert**: Sent when less than 75 minutes remain.
@@ -215,6 +215,8 @@ To keep your bot running continuously 24/7 for free, set up a free monitor using
 | `/courses` | Interactive list of all enrolled active Canvas courses. |
 | `/assignments` | List all upcoming assignments sorted by due date. |
 | `/announcements` | View recent course announcements across all active classes. |
+| `/discussions` or `/forums` | View course discussion topics, practice exercises & forum activities. |
+| `/discussion <id>` | View complete prompt, instructions, and attachments for a discussion topic. |
 | `/all` | View complete catalog of all course assignments. |
 | `/completed` | View list of submitted/graded assignments. |
 | `/past` | View past-due and archived assignments. |
@@ -256,6 +258,7 @@ canvas-telegram-agent/
 │   │   ├── courses.ts          # Course query helpers
 │   │   ├── assignments.ts      # Assignment & submission fetchers
 │   │   ├── announcements.ts    # Course announcement fetchers
+│   │   ├── discussions.ts      # Course discussion & activity fetchers
 │   │   └── types.ts            # Strict Canvas API TypeScript interfaces
 │   ├── config/
 │   │   └── env.ts              # Zod environment variable schema & validation
