@@ -12,7 +12,7 @@ import {
     getCourseAssignments,
     findAssignmentById,
 } from "../canvas/assignments.js";
-import { getLatestAnnouncements } from "../canvas/announcements.js";
+import { getLatestAnnouncements, findAnnouncementById } from "../canvas/announcements.js";
 import { getAllDiscussions, findDiscussionById, getDiscussionDetails } from "../canvas/discussions.js";
 import { storage } from "../services/storage.js";
 import { askGeminiAgent } from "../ai/agent.js";
@@ -23,6 +23,7 @@ import {
     formatAssignmentListChunks,
     formatAssignmentDetail,
     formatAnnouncementList,
+    formatAnnouncementDetail,
     formatDiscussionList,
     formatDiscussionDetail,
     formatStatusMessage,
@@ -31,6 +32,8 @@ import {
 import {
     buildCoursesKeyboard,
     buildAssignmentDetailKeyboard,
+    buildAnnouncementSelectionKeyboard,
+    buildAnnouncementDetailKeyboard,
     buildDiscussionSelectionKeyboard,
     buildDiscussionDetailKeyboard,
 } from "./keyboards.js";
@@ -375,10 +378,65 @@ export async function handleAnnouncements(ctx: CommandContext<Context>): Promise
     try {
         const announcements = await getLatestAnnouncements(courseId, 10);
         const text = formatAnnouncementList(announcements);
-        await ctx.reply(text, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+
+        if (announcements.length > 0) {
+            const keyboard = buildAnnouncementSelectionKeyboard(announcements, courseId ? courseId[0] : undefined);
+            await ctx.reply(text, {
+                parse_mode: "HTML",
+                reply_markup: keyboard,
+                link_preview_options: { is_disabled: true },
+            });
+        } else {
+            await ctx.reply(text, {
+                parse_mode: "HTML",
+                link_preview_options: { is_disabled: true },
+            });
+        }
     } catch (error) {
         console.error("Error in /announcements:", error);
         await ctx.reply("❌ <b>Failed to fetch announcements from Canvas.</b>", { parse_mode: "HTML" });
+    }
+}
+
+/**
+ * /announcement <id>: Displays full content, instructions, and actions for a single announcement.
+ */
+export async function handleAnnouncementDetail(ctx: CommandContext<Context>): Promise<void> {
+    const rawId = ctx.match?.trim();
+    if (!rawId || isNaN(Number(rawId))) {
+        await ctx.reply("ℹ️ <b>Please specify a numeric Announcement ID.</b>\nExample: <code>/announcement 5822</code>", {
+            parse_mode: "HTML",
+        });
+        return;
+    }
+
+    const announcementId = Number(rawId);
+    await ctx.replyWithChatAction("typing");
+
+    try {
+        const announcement = await findAnnouncementById(announcementId);
+        if (!announcement) {
+            await ctx.reply(`❌ <b>Announcement #${announcementId} not found in your active courses.</b>`, {
+                parse_mode: "HTML",
+            });
+            return;
+        }
+
+        const text = formatAnnouncementDetail(announcement);
+        const keyboard = buildAnnouncementDetailKeyboard(
+            announcement.html_url || announcement.url,
+            announcement.courseId,
+            announcement.id
+        );
+
+        await ctx.reply(text, {
+            parse_mode: "HTML",
+            reply_markup: keyboard,
+            link_preview_options: { is_disabled: true },
+        });
+    } catch (error) {
+        console.error("Error in /announcement:", error);
+        await ctx.reply("❌ <b>Failed to fetch announcement details from Canvas.</b>", { parse_mode: "HTML" });
     }
 }
 

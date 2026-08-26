@@ -7,7 +7,7 @@ import {
     findAssignmentById,
     getAllAssignments,
 } from "../canvas/assignments.js";
-import { getLatestAnnouncements } from "../canvas/announcements.js";
+import { getLatestAnnouncements, getAnnouncementDetails, findAnnouncementById } from "../canvas/announcements.js";
 import {
     getCourseDiscussions,
     getAllDiscussions,
@@ -67,6 +67,27 @@ export const canvasToolDeclarations: FunctionDeclaration[] = [
                 limit: {
                     type: Type.INTEGER,
                     description: "Maximum number of announcements to retrieve (default: 8).",
+                },
+            },
+        },
+    },
+    {
+        name: "get_announcement_details",
+        description: "Fetches full content, professor announcement text, instructions, and date for a specific course announcement.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                announcementId: {
+                    type: Type.INTEGER,
+                    description: "The numeric Canvas announcement ID (e.g. 5822).",
+                },
+                announcementTitle: {
+                    type: Type.STRING,
+                    description: "The title or keyword of the announcement to search for if ID is unknown.",
+                },
+                courseId: {
+                    type: Type.INTEGER,
+                    description: "Optional course ID if known.",
                 },
             },
         },
@@ -218,6 +239,38 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                     content_preview: cleanHtmlSnippet(ann.message, 500),
                     url: ann.html_url || ann.url,
                 }));
+            }
+
+            case "get_announcement_details": {
+                let announcement = null;
+                if (args.announcementId) {
+                    if (args.courseId) {
+                        announcement = await getAnnouncementDetails(Number(args.courseId), Number(args.announcementId));
+                    } else {
+                        announcement = await findAnnouncementById(Number(args.announcementId));
+                    }
+                } else if (args.announcementTitle) {
+                    const list = await getLatestAnnouncements(undefined, 25);
+                    const query = String(args.announcementTitle).toLowerCase();
+                    announcement = list.find((a) => a.title.toLowerCase().includes(query)) || null;
+                }
+
+                if (!announcement) {
+                    return { error: `Announcement '${args.announcementTitle || args.announcementId}' not found.` };
+                }
+
+                const rawMsg = announcement.message || "";
+                const markdownText = rawMsg.trim() ? turndown.turndown(rawMsg) : "";
+
+                return {
+                    id: announcement.id,
+                    title: announcement.title,
+                    course: announcement.courseName,
+                    author: announcement.author?.display_name,
+                    posted_at: announcement.posted_at || announcement.created_at,
+                    content_text: markdownText || "(No message body)",
+                    url: announcement.html_url || announcement.url,
+                };
             }
 
             case "get_course_discussions": {

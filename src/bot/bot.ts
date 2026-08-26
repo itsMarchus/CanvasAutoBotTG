@@ -13,6 +13,7 @@ import {
     handleTodo,
     handleCompleted,
     handleAnnouncements,
+    handleAnnouncementDetail,
     handleDiscussions,
     handleDiscussionDetail,
     handleStatus,
@@ -121,6 +122,7 @@ bot.command("submitted", handleCompleted);
 
 // 4. Discussions & Announcements & system commands
 bot.command("announcements", handleAnnouncements);
+bot.command("announcement", handleAnnouncementDetail);
 bot.command("discussions", handleDiscussions);
 bot.command("forums", handleDiscussions);
 bot.command("discussion", handleDiscussionDetail);

@@ -12,7 +12,10 @@ import {
     formatNewDiscussionNotification,
     formatDueReminderNotification,
 } from "../bot/formatters.js";
-import { buildNewDiscussionNotificationKeyboard } from "../bot/keyboards.js";
+import {
+    buildNewDiscussionNotificationKeyboard,
+    buildNewAnnouncementNotificationKeyboard,
+} from "../bot/keyboards.js";
 
 export class CanvasNotifier {
     private cronJob: Cron | null = null;
@@ -87,8 +90,14 @@ export class CanvasNotifier {
                     if (!isInitialRun && targetChatId) {
                         try {
                             const text = formatNewAnnouncementNotification(announcement);
+                            const replyMarkup = buildNewAnnouncementNotificationKeyboard(
+                                announcement.html_url || announcement.url,
+                                announcement.courseId,
+                                announcement.id
+                            );
                             await bot.api.sendMessage(targetChatId, text, {
                                 parse_mode: "HTML",
+                                reply_markup: replyMarkup,
                                 link_preview_options: { is_disabled: true },
                             });
                             await storage.logNotification("announcement", announcement.id, "new_item");

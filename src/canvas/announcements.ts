@@ -47,3 +47,43 @@ export async function getLatestAnnouncements(
         return [];
     }
 }
+
+/**
+ * Fetches full details for a specific announcement.
+ */
+export async function getAnnouncementDetails(
+    courseId: number,
+    announcementId: number
+): Promise<EnrichedAnnouncement | null> {
+    try {
+        const announcement = await canvasFetch<CanvasAnnouncement>(
+            `/courses/${courseId}/discussion_topics/${announcementId}`
+        );
+
+        const activeCourses = await getActiveCourses();
+        const course = activeCourses.find((c) => c.id === courseId);
+
+        return {
+            ...announcement,
+            courseId,
+            courseName: course?.name,
+        };
+    } catch (error) {
+        console.error(`Error fetching announcement #${announcementId} for course #${courseId}:`, error);
+        return null;
+    }
+}
+
+/**
+ * Searches across all active courses to find an announcement by its ID.
+ */
+export async function findAnnouncementById(
+    announcementId: number
+): Promise<EnrichedAnnouncement | null> {
+    const list = await getLatestAnnouncements(undefined, 30);
+    const match = list.find((a) => a.id === announcementId);
+    if (match && match.courseId) {
+        return getAnnouncementDetails(match.courseId, announcementId);
+    }
+    return match || null;
+}

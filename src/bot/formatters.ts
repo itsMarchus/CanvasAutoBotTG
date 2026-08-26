@@ -144,7 +144,8 @@ Here are the commands and features you can use:
 
 📖 <b>Courses & Updates</b>
 • /courses — List active courses with interactive action buttons
-• /announcements — View latest course announcements
+• /announcements — View latest course announcements with interactive selection buttons
+• /announcement &lt;id&gt; — View full content & instructions for an announcement
 • /discussions or /forums — View course discussion topics & activities
 • /discussion &lt;id&gt; — View full prompt & instructions for a discussion topic
 
@@ -265,6 +266,38 @@ export function formatAnnouncementList(announcements: EnrichedAnnouncement[]): s
     });
 
     return text;
+}
+
+/**
+ * Formats full detailed card for a single announcement, preserving complete text.
+ */
+export function formatAnnouncementDetail(announcement: EnrichedAnnouncement): string {
+    const course = announcement.courseName
+        ? `📚 <b>Course:</b> ${escapeHtml(announcement.courseName)}\n`
+        : "";
+    const author = announcement.author?.display_name
+        ? `👤 <b>Author:</b> ${escapeHtml(announcement.author.display_name)}\n`
+        : "";
+
+    const postedTime = announcement.posted_at || announcement.created_at
+        ? new Date(announcement.posted_at || announcement.created_at).toLocaleString("en-US", {
+            timeZone: env.TIMEZONE,
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+        })
+        : "Unknown";
+
+    const contentText = formatInstructionsToTelegramHtml(announcement.message || "", 3500);
+
+    return `📢 <b>${escapeHtml(announcement.title)}</b>\n` +
+        `${course}` +
+        `${author}` +
+        `📅 <b>Posted:</b> ${postedTime}\n\n` +
+        `📖 <b>Content:</b>\n` +
+        `${contentText}\n\n` +
+        `🆔 Announcement ID: <code>${announcement.id}</code>`;
 }
 
 /**

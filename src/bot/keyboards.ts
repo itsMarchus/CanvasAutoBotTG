@@ -1,6 +1,7 @@
 import { InlineKeyboard } from "grammy";
-import type { CanvasCourse, CanvasAssignment, CanvasDiscussionTopic } from "../canvas/types.js";
+import type { CanvasCourse, CanvasAssignment, CanvasDiscussionTopic, CanvasAnnouncement } from "../canvas/types.js";
 import type { EnrichedDiscussionTopic } from "../canvas/discussions.js";
+import type { EnrichedAnnouncement } from "../canvas/announcements.js";
 
 /**
  * Builds an inline keyboard listing courses with buttons to view details.
@@ -79,6 +80,60 @@ export function buildDiscussionSelectionKeyboard(
 }
 
 /**
+ * Builds an interactive keyboard with buttons to view specific announcement details.
+ */
+export function buildAnnouncementSelectionKeyboard(
+    announcements: EnrichedAnnouncement[] | CanvasAnnouncement[],
+    courseId?: number,
+    maxButtons: number = 8
+): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    const subset = announcements.slice(0, maxButtons);
+    subset.forEach((a, index) => {
+        const label = a.title.length > 28 ? `${a.title.slice(0, 26)}...` : a.title;
+        const cId = (a as EnrichedAnnouncement).courseId || courseId || 0;
+        keyboard.text(`📢 ${index + 1}. ${label}`, `announce_view:${cId}:${a.id}`).row();
+    });
+
+    if (courseId) {
+        keyboard.text("« Back to Course Menu", `course:${courseId}`);
+    } else {
+        keyboard.text("« Back to Courses", "back_courses");
+    }
+    return keyboard;
+}
+
+/**
+ * Builds an action keyboard for a single announcement detail view.
+ */
+export function buildAnnouncementDetailKeyboard(
+    htmlUrl: string,
+    courseId?: number,
+    announcementId?: number
+): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    if (announcementId) {
+        keyboard
+            .text("🤖 AI Summarize / Explain", `ai_explain_announce:${courseId || 0}:${announcementId}`)
+            .row();
+    }
+
+    if (htmlUrl) {
+        keyboard.url("👉 Open in Canvas Browser", htmlUrl);
+    }
+
+    if (courseId) {
+        keyboard.row().text("« Back to Course Menu", `course:${courseId}`);
+    } else {
+        keyboard.row().text("« Back to Announcements", "refresh_announcements");
+    }
+
+    return keyboard;
+}
+
+/**
  * Builds an action keyboard for a single assignment detail view.
  */
 export function buildAssignmentDetailKeyboard(
@@ -151,6 +206,27 @@ export function buildNewDiscussionNotificationKeyboard(
         .text("🤖 AI Solution", `ai_answer_disc:${courseId}:${topicId}`)
         .row()
         .url("👉 Open in Canvas", htmlUrl);
+}
+
+/**
+ * Builds a notification keyboard for newly posted announcements.
+ */
+export function buildNewAnnouncementNotificationKeyboard(
+    htmlUrl: string,
+    courseId?: number,
+    announcementId?: number
+): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+    if (announcementId) {
+        keyboard
+            .text("📖 Full Content", `announce_view:${courseId || 0}:${announcementId}`)
+            .text("🤖 AI Summarize", `ai_explain_announce:${courseId || 0}:${announcementId}`)
+            .row();
+    }
+    if (htmlUrl) {
+        keyboard.url("👉 Open in Canvas", htmlUrl);
+    }
+    return keyboard;
 }
 
 /**

@@ -2,7 +2,7 @@ import type { Context } from "grammy";
 import { getCurrentUser } from "../canvas/client.js";
 import { getActiveCourses, getCourseById } from "../canvas/courses.js";
 import { getCourseAssignments, getAssignmentDetails } from "../canvas/assignments.js";
-import { getLatestAnnouncements } from "../canvas/announcements.js";
+import { getLatestAnnouncements, getAnnouncementDetails } from "../canvas/announcements.js";
 import { getCourseDiscussions, getDiscussionDetails } from "../canvas/discussions.js";
 import { askGeminiAgent } from "../ai/agent.js";
 import {
@@ -10,6 +10,7 @@ import {
     formatAssignmentList,
     formatAssignmentDetail,
     formatAnnouncementList,
+    formatAnnouncementDetail,
     formatDiscussionList,
     formatDiscussionDetail,
     formatCourseList,
@@ -20,6 +21,8 @@ import {
     buildCourseActionKeyboard,
     buildAssignmentSelectionKeyboard,
     buildAssignmentDetailKeyboard,
+    buildAnnouncementSelectionKeyboard,
+    buildAnnouncementDetailKeyboard,
     buildDiscussionSelectionKeyboard,
     buildDiscussionDetailKeyboard,
     buildBackToCoursesKeyboard,
@@ -275,12 +278,15 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
             if (isNaN(courseId)) return;
 
             await ctx.answerCallbackQuery({ text: "Fetching announcements..." });
-            const announcements = await getLatestAnnouncements([courseId], 5);
+            const announcements = await getLatestAnnouncements([courseId], 8);
             const text = formatAnnouncementList(announcements);
+            const keyboard = announcements.length > 0
+                ? buildAnnouncementSelectionKeyboard(announcements, courseId)
+                : buildBackToCoursesKeyboard();
 
             await ctx.editMessageText(text, {
                 parse_mode: "HTML",
-                reply_markup: buildBackToCoursesKeyboard(),
+                reply_markup: keyboard,
                 link_preview_options: { is_disabled: true },
             });
             return;
@@ -389,6 +395,78 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
                 `- If it contains exercises, questions, or problems to solve (e.g. PivotTables, queries, code, math), provide the full step-by-step solutions, explanations, and answers! ` +
                 `- If it only references an attached document without text questions, notify the student and ask them to paste questions from the file. ` +
                 `- If it is an open discussion or reflection question, draft a thoughtful, articulate, and well-structured response following academic best practices.`;
+
+            const user = await getCurrentUser().catch(() => undefined);
+            const response = await askGeminiAgent(ctx.chat.id, prompt, user?.name);
+            const chunks = formatAiResponseChunks(response);
+
+            for (const chunk of chunks) {
+                try {
+                    await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+                } catch {
+                    await ctx.reply(chunk, { link_preview_options: { is_disabled: true } });
+                }
+            }
+            return;
+        }
+
+        // 13. Back to / Refresh Announcements list
+        if (data === "refresh_announcements") {
+            await ctx.answerCallbackQuery({ text: "Loading announcements..." });
+            const announcements = await getLatestAnnouncements(undefined, 10);
+            const text = formatAnnouncementList(announcements);
+            const keyboard = announcements.length > 0
+                ? buildAnnouncementSelectionKeyboard(announcements)
+                : buildBackToCoursesKeyboard();
+
+            await ctx.editMessageText(text, {
+                parse_mode: "HTML",
+                reply_markup: keyboard,
+                link_preview_options: { is_disabled: true },
+            });
+            return;
+        }
+
+        // 14. View specific announcement full details
+        if (data.startsWith("announce_view:")) {
+            const parts = data.split(":");
+            const courseId = parseInt(parts[1] || "", 10);
+            const announcementId = parseInt(parts[2] || "", 10);
+
+            if (isNaN(announcementId)) return;
+
+            await ctx.answerCallbackQuery({ text: "Loading announcement content..." });
+            const announcement = await getAnnouncementDetails(courseId, announcementId);
+
+            if (!announcement) {
+                await ctx.reply("❌ <b>Announcement details not found.</b>", { parse_mode: "HTML" });
+                return;
+            }
+
+            const text = formatAnnouncementDetail(announcement);
+            await ctx.editMessageText(text, {
+                parse_mode: "HTML",
+                reply_markup: buildAnnouncementDetailKeyboard(announcement.html_url || announcement.url, courseId, announcement.id),
+                link_preview_options: { is_disabled: true },
+            });
+            return;
+        }
+
+        // 15. AI Summarize / Explain Announcement
+        if (data.startsWith("ai_explain_announce:")) {
+            const parts = data.split(":");
+            const courseId = parseInt(parts[1] || "", 10);
+            const announcementId = parseInt(parts[2] || "", 10);
+
+            if (isNaN(announcementId)) return;
+
+            await ctx.answerCallbackQuery({ text: "🧠 Gemini is analyzing announcement..." });
+            if (!ctx.chat) return;
+
+            await ctx.replyWithChatAction("typing");
+
+            const prompt = `Please fetch the details for announcement ID ${announcementId} in course ID ${courseId}. ` +
+                `Summarize this announcement clearly for the student, highlight any critical dates, deadlines, room numbers, Zoom links, exam instructions, schedule changes, or required student action items.`;
 
             const user = await getCurrentUser().catch(() => undefined);
             const response = await askGeminiAgent(ctx.chat.id, prompt, user?.name);
