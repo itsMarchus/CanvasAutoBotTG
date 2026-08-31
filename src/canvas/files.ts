@@ -1,5 +1,6 @@
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
+import { ai } from "../ai/client.js";
 import { env } from "../config/env.js";
 import { canvasFetch } from "./client.js";
 import type { CanvasFile, CanvasFileAttachment } from "./types.js";
@@ -118,7 +119,7 @@ export async function downloadCanvasFile(fileIdOrUrl: string | number): Promise<
 }
 
 /**
- * Extracts readable plain text or markdown from a document buffer.
+ * Extracts readable plain text, markdown, or vision analysis from a document buffer.
  */
 export async function extractFileContent(
     buffer: Buffer,
@@ -152,7 +153,58 @@ export async function extractFileContent(
             const docxData = await mammoth.extractRawText({ buffer });
             extractedText = docxData.value || "";
         }
-        // 3. Text, Markdown, Code, CSV, JSON
+        // 3. Images (PNG, JPG, JPEG, WEBP, GIF, BMP, SVG) -> Gemini Multimodal Vision Extraction
+        else if (
+            ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg"].includes(ext) ||
+            mimeType.startsWith("image/")
+        ) {
+            fileType = "IMAGE";
+            if (ai) {
+                try {
+                    const model = env.GEMINI_MODEL || "gemini-flash-latest";
+                    let effectiveMime = mimeType.startsWith("image/") ? mimeType : `image/${ext === "jpg" ? "jpeg" : ext}`;
+                    if (effectiveMime === "image/svg+xml" || ext === "svg") {
+                        // SVGs can also be read as raw XML/text
+                        extractedText = buffer.toString("utf-8");
+                    } else {
+                        const visionResp = await ai.models.generateContent({
+                            model,
+                            contents: [
+                                {
+                                    role: "user",
+                                    parts: [
+                                        {
+                                            text: `You are an academic visual analyzer extracting content for a college student and tutor.
+Thoroughly examine this assignment/course image and extract all information:
+1. **Text & Labels**: Transcribe all visible text, questions, titles, legends, headings, and numbers verbatim.
+2. **Graph / Diagram Analysis**: If this is a chart/graph/diagram, describe:
+   - Chart type (e.g. line chart, bar graph, scatter plot, flowchart).
+   - X-axis and Y-axis labels, units, and ranges.
+   - All plotted data series, trends (increasing/decreasing/peaks/troughs), key data points with numeric coordinates/values.
+3. **Key Observations**: Highlight any specific data patterns, anomalies, or relationships shown in the visual.
+Be precise and thorough so an academic question can be answered completely from your transcription.`
+                                        },
+                                        {
+                                            inlineData: {
+                                                mimeType: effectiveMime,
+                                                data: buffer.toString("base64")
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        });
+                        extractedText = visionResp.text || "[Image was analyzed, but no visual text was returned.]";
+                    }
+                } catch (vErr: any) {
+                    console.error(`Gemini vision extraction failed for ${filename}:`, vErr);
+                    extractedText = `[Image attached: ${filename}. Vision analysis error: ${vErr.message || String(vErr)}]`;
+                }
+            } else {
+                extractedText = `[Image attached: ${filename}. Gemini AI client not initialized to parse visual content.]`;
+            }
+        }
+        // 4. Text, Markdown, Code, CSV, JSON
         else if (
             [
                 "txt", "md", "csv", "tsv", "json", "py", "java", "cpp", "c", "h", "cs",
@@ -165,10 +217,10 @@ export async function extractFileContent(
             fileType = ext.toUpperCase() || "TEXT";
             extractedText = buffer.toString("utf-8");
         }
-        // 4. Unsupported or binary formats
+        // 5. Unsupported or other binary formats
         else {
             fileType = ext.toUpperCase() || "BINARY";
-            extractedText = `[Unsupported binary file type: .${ext} (${mimeType}). Only text, PDF, DOCX, and code files can be parsed directly.]`;
+            extractedText = `[Unsupported binary file type: .${ext} (${mimeType}). Only text, PDF, DOCX, images, and code files can be parsed directly.]`;
         }
     } catch (err: any) {
         console.error(`Error extracting text from ${filename}:`, err);
@@ -199,10 +251,14 @@ export async function extractFileContent(
  */
 export function extractStructuredAttachments(html: string = ""): CanvasFileAttachment[] {
     const attachments: CanvasFileAttachment[] = [];
+    const seenUrls = new Set<string>();
+
+    const fileExtPattern = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|csv|txt|py|java|cpp|sql|png|jpe?g|webp|gif|svg)(\?|$)/i;
+    const fileLabelPattern = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|csv|txt|py|java|cpp|sql|png|jpe?g|webp|gif|svg)$/i;
+
+    // 1. Check anchor <a> tags
     const linkRegex = /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
     let match;
-
-    const seenUrls = new Set<string>();
 
     while ((match = linkRegex.exec(html)) !== null) {
         const url = match[1]?.trim() || "";
@@ -213,13 +269,13 @@ export function extractStructuredAttachments(html: string = ""): CanvasFileAttac
         const isCanvasFile =
             url.includes("/files/") ||
             url.includes("download_frd=1") ||
-            /\.(pdf|docx?|xlsx?|pptx?|zip|rar|csv|txt|py|java|cpp|sql)$/i.test(rawLabel) ||
-            /\.(pdf|docx?|xlsx?|pptx?|zip|rar|csv|txt|py|java|cpp|sql)(\?|$)/i.test(url);
+            url.includes("/preview") ||
+            fileLabelPattern.test(rawLabel) ||
+            fileExtPattern.test(url);
 
         if (isCanvasFile) {
             seenUrls.add(url);
 
-            // Extract numeric ID if present
             const idMatch = url.match(/\/files\/(\d+)/i);
             const id = idMatch && idMatch[1] ? Number(idMatch[1]) : undefined;
 
@@ -236,6 +292,45 @@ export function extractStructuredAttachments(html: string = ""): CanvasFileAttac
                 filename,
                 displayName: rawLabel || filename,
                 url,
+            });
+        }
+    }
+
+    // 2. Check embedded <img> tags (graphs, charts, diagrams)
+    const imgRegex = /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi;
+    let imgMatch;
+
+    while ((imgMatch = imgRegex.exec(html)) !== null) {
+        const fullTag = imgMatch[0] || "";
+        const src = imgMatch[1]?.trim() || "";
+
+        if (!src || seenUrls.has(src)) continue;
+
+        // Check if image is a Canvas file or common image extension
+        if (src.includes("/files/") || src.includes("/preview") || fileExtPattern.test(src)) {
+            seenUrls.add(src);
+
+            const idMatch = src.match(/\/files\/(\d+)/i);
+            const id = idMatch && idMatch[1] ? Number(idMatch[1]) : undefined;
+
+            // Extract alt or title if present
+            const altMatch = fullTag.match(/alt=["']([^"']+)["']/i);
+            const titleMatch = fullTag.match(/title=["']([^"']+)["']/i);
+            const label = altMatch?.[1] || titleMatch?.[1] || "image.png";
+
+            let filename = label;
+            if (!filename.includes(".") && src.includes(".")) {
+                const urlFilename = src.split("/").pop()?.split("?")[0];
+                if (urlFilename && urlFilename.includes(".")) {
+                    filename = decodeURIComponent(urlFilename);
+                }
+            }
+
+            attachments.push({
+                id,
+                filename: filename.includes(".") ? filename : `${filename}.png`,
+                displayName: label,
+                url: src,
             });
         }
     }

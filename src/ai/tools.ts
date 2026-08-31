@@ -65,7 +65,7 @@ export const canvasToolDeclarations: FunctionDeclaration[] = [
     },
     {
         name: "read_assignment_file",
-        description: "Downloads and reads the full text and instructions from an attached assignment document (PDF, Word .docx, code, CSV, text) on Canvas. Use this whenever an assignment has attached documents containing questions, rubrics, or instructions.",
+        description: "Downloads and reads the full text, instructions, and visual graphs/diagrams from an attached assignment document or image (PDF, Word .docx, PNG, JPG, code, CSV, text) on Canvas. Use this whenever an assignment has attached documents or images containing questions, rubrics, graphs, or instructions.",
         parameters: {
             type: Type.OBJECT,
             properties: {
