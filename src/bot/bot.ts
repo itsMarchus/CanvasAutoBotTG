@@ -29,8 +29,10 @@ import {
 } from "./commands.js";
 
 import { handleCallbackQuery } from "./callbacks.js";
+import { handleIncomingPhoto, handleIncomingDocument } from "./uploads.js";
 
 export const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
+
 
 /**
  * Security middleware: Ensures only authorized Telegram user can interact with the bot.
@@ -142,10 +144,17 @@ bot.command("testnotify", handleTestNotify);
 // 5. Inline keyboard callback queries
 bot.on("callback_query:data", handleCallbackQuery);
 
-// 6. Free-form text messages (routed directly to Gemini AI)
+// 6. Direct Photo uploads (analyzed via Gemini Vision)
+bot.on("message:photo", handleIncomingPhoto);
+
+// 7. Direct Document uploads (PDF, Word, Code, Data, Text)
+bot.on("message:document", handleIncomingDocument);
+
+// 8. Free-form text messages (routed directly to Gemini AI)
 bot.on("message:text", handleFreeFormChat);
 
 // Error boundary
 bot.catch((err) => {
     console.error("❌ Grammy Bot Error:", err.error || err);
 });
+

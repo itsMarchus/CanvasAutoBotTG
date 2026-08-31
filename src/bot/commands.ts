@@ -48,7 +48,7 @@ import {
 /**
  * Safely sends AI markdown/HTML response chunks with plain text fallback if parsing errors occur.
  */
-async function replyAiChunksSafe(ctx: Context, response: string): Promise<void> {
+export async function replyAiChunksSafe(ctx: Context, response: string): Promise<void> {
     const chunks = formatAiResponseChunks(response);
     for (const chunk of chunks) {
         try {
@@ -59,6 +59,7 @@ async function replyAiChunksSafe(ctx: Context, response: string): Promise<void> 
         }
     }
 }
+
 
 /**
  * /start command handler.

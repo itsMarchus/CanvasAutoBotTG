@@ -127,7 +127,9 @@ export function formatHelpMessage(): string {
 Here are the commands and features you can use:
 
 🤖 <b>Gemini AI Academic Assistant</b>
-• 💬 <i>Send any message directly to chat with Gemini!</i>
+• 💬 <i>Send any text message directly to chat with Gemini!</i>
+• 📸 <i>Send photos of math, diagrams, worksheets, or notes to solve & explain!</i>
+• 📄 <i>Upload PDFs, Word docs (.docx), code scripts, or CSV files to analyze & critique!</i>
 • /ask &lt;question&gt; — Ask anything (tutoring, conceptual questions, Canvas queries)
 • /explain &lt;id&gt; — Step-by-step breakdown of an assignment's instructions
 • /answer &lt;id&gt; — Generate comprehensive answers & solutions for an assignment
