@@ -116,3 +116,31 @@ export interface CanvasDiscussionTopic {
     require_initial_post?: boolean;
     is_announcement?: boolean;
 }
+
+export interface CanvasFile {
+    id: number;
+    folder_id?: number | undefined;
+    display_name: string;
+    filename: string;
+    "content-type"?: string | undefined;
+    url?: string | undefined;
+    size?: number | undefined;
+    created_at?: string | undefined;
+    updated_at?: string | undefined;
+    unlock_at?: string | null | undefined;
+    locked?: boolean | undefined;
+    hidden?: boolean | undefined;
+    thumbnail_url?: string | null | undefined;
+    mime_class?: string | undefined;
+}
+
+export interface CanvasFileAttachment {
+    id?: number | undefined;
+    filename: string;
+    displayName: string;
+    url: string;
+    size?: number | undefined;
+    contentType?: string | undefined;
+}
+
+

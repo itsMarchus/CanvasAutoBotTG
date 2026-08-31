@@ -14,6 +14,11 @@ import {
     getDiscussionDetails,
     findDiscussionById,
 } from "../canvas/discussions.js";
+import {
+    downloadCanvasFile,
+    extractFileContent,
+    extractStructuredAttachments,
+} from "../canvas/files.js";
 import { cleanHtmlSnippet, turndown } from "../bot/formatters.js";
 
 /**
@@ -43,7 +48,7 @@ export const canvasToolDeclarations: FunctionDeclaration[] = [
     },
     {
         name: "get_assignment_details",
-        description: "Fetches full professor instructions, rubric, points, deadline, and submission rules for a specific assignment.",
+        description: "Fetches full professor instructions, rubric, points, deadline, attached file links/IDs, and submission rules for a specific assignment.",
         parameters: {
             type: Type.OBJECT,
             properties: {
@@ -54,6 +59,31 @@ export const canvasToolDeclarations: FunctionDeclaration[] = [
                 assignmentTitle: {
                     type: Type.STRING,
                     description: "The title or keyword of the assignment to search for if ID is unknown.",
+                },
+            },
+        },
+    },
+    {
+        name: "read_assignment_file",
+        description: "Downloads and reads the full text and instructions from an attached assignment document (PDF, Word .docx, code, CSV, text) on Canvas. Use this whenever an assignment has attached documents containing questions, rubrics, or instructions.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                fileId: {
+                    type: Type.INTEGER,
+                    description: "The numeric Canvas file ID (e.g. 10423) if available.",
+                },
+                fileUrl: {
+                    type: Type.STRING,
+                    description: "The download URL of the attached file if numeric ID is not known.",
+                },
+                filename: {
+                    type: Type.STRING,
+                    description: "The filename of the attached document (e.g. 'Lab3_Instructions.pdf').",
+                },
+                assignmentId: {
+                    type: Type.INTEGER,
+                    description: "Optional assignment ID to find attached files for.",
                 },
             },
         },
@@ -205,6 +235,7 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                 }
 
                 const rawDesc = assignment.description || "";
+                const structuredAttachments = extractStructuredAttachments(rawDesc);
                 const attachedFiles = extractAttachedFiles(rawDesc);
                 const markdownText = rawDesc.trim() ? turndown.turndown(rawDesc) : "";
                 const hasSubstantialText = markdownText.trim().length > 20;
@@ -220,10 +251,90 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                     submission_status: assignment.submission?.workflow_state || "unsubmitted",
                     score: assignment.submission?.score ?? assignment.submission?.grade ?? null,
                     has_text_instructions: hasSubstantialText,
-                    has_attached_files: attachedFiles.length > 0,
+                    has_attached_files: structuredAttachments.length > 0 || attachedFiles.length > 0,
+                    attachments: structuredAttachments.map((att) => ({
+                        id: att.id,
+                        filename: att.filename,
+                        name: att.displayName,
+                        url: att.url,
+                    })),
                     attached_files: attachedFiles,
                     instructions_text: markdownText || "(No written text instructions found)",
+                    recommended_action: structuredAttachments.length > 0
+                        ? "Assignment has attached document(s). Call read_assignment_file to read the questions or instructions from the attached file."
+                        : undefined,
                     url: assignment.html_url,
+                };
+            }
+
+            case "read_assignment_file": {
+                let targetFileId: number | string | undefined = args.fileId;
+                let targetUrl: string | undefined = args.fileUrl;
+                let targetFilename: string | undefined = args.filename;
+
+                // If fileId or fileUrl not directly provided, search via assignmentId or assignmentTitle
+                if (!targetFileId && !targetUrl && (args.assignmentId || args.assignmentTitle)) {
+                    let assignment = null;
+                    if (args.assignmentId) {
+                        assignment = await findAssignmentById(Number(args.assignmentId));
+                    } else if (args.assignmentTitle) {
+                        const all = await getAllAssignments();
+                        const query = String(args.assignmentTitle).toLowerCase();
+                        assignment = all.find((a) => a.name.toLowerCase().includes(query)) || null;
+                    }
+
+                    if (assignment && assignment.description) {
+                        const attachments = extractStructuredAttachments(assignment.description);
+                        if (attachments.length > 0) {
+                            if (targetFilename) {
+                                const match = attachments.find(
+                                    (att) =>
+                                        att.filename.toLowerCase().includes(String(targetFilename).toLowerCase()) ||
+                                        att.displayName.toLowerCase().includes(String(targetFilename).toLowerCase())
+                                );
+                                if (match) {
+                                    targetFileId = match.id;
+                                    targetUrl = match.url;
+                                    targetFilename = match.filename;
+                                }
+                            }
+
+                            if (!targetFileId && !targetUrl && attachments[0]) {
+                                targetFileId = attachments[0].id;
+                                targetUrl = attachments[0].url;
+                                targetFilename = attachments[0].filename;
+                            }
+                        }
+                    }
+                }
+
+                const lookupTarget = targetFileId || targetUrl;
+                if (!lookupTarget) {
+                    return {
+                        error: "Could not locate the file to read. Please provide fileId, fileUrl, or assignmentId with attached files.",
+                    };
+                }
+
+                const downloaded = await downloadCanvasFile(lookupTarget);
+                if (!downloaded) {
+                    return {
+                        error: `Failed to download file [${targetFilename || lookupTarget}] from Canvas. The file may be locked, deleted, or hosted on an external drive.`,
+                    };
+                }
+
+                const extracted = await extractFileContent(
+                    downloaded.buffer,
+                    downloaded.mimeType,
+                    downloaded.filename
+                );
+
+                return {
+                    filename: downloaded.filename,
+                    file_type: extracted.fileType,
+                    num_pages: extracted.numPages,
+                    character_count: extracted.charCount,
+                    is_truncated: extracted.isTruncated,
+                    file_content: extracted.text,
                 };
             }
 
