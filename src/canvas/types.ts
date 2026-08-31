@@ -81,40 +81,42 @@ export interface CanvasAnnouncement {
         id: number;
         display_name: string;
         avatar_image_url?: string;
-    };
+    } | undefined;
     context_code: string; // e.g. "course_12345"
-    read_state?: "read" | "unread";
+    read_state?: "read" | "unread" | undefined;
+    attachments?: Array<CanvasFile | CanvasFileAttachment | Record<string, any>> | undefined;
 }
 
 export interface CanvasDiscussionTopic {
     id: number;
     title: string;
-    message?: string | null;
-    posted_at?: string | null;
+    message?: string | null | undefined;
+    posted_at?: string | null | undefined;
     created_at: string;
-    last_reply_at?: string | null;
-    delayed_post_at?: string | null;
-    lock_at?: string | null;
-    todo_date?: string | null;
-    assignment_id?: number | null;
-    discussion_type?: "side_comment" | "threaded";
-    user_name?: string;
-    discussion_subentry_count?: number;
-    unread_count?: number;
-    subscribed?: boolean;
-    published?: boolean;
-    locked?: boolean;
+    last_reply_at?: string | null | undefined;
+    delayed_post_at?: string | null | undefined;
+    lock_at?: string | null | undefined;
+    todo_date?: string | null | undefined;
+    assignment_id?: number | null | undefined;
+    discussion_type?: "side_comment" | "threaded" | undefined;
+    user_name?: string | undefined;
+    discussion_subentry_count?: number | undefined;
+    unread_count?: number | undefined;
+    subscribed?: boolean | undefined;
+    published?: boolean | undefined;
+    locked?: boolean | undefined;
     author?: {
         id: number;
         display_name: string;
         avatar_image_url?: string;
         html_url?: string;
-    };
+    } | undefined;
     html_url: string;
     url: string;
-    pinned?: boolean;
-    require_initial_post?: boolean;
-    is_announcement?: boolean;
+    pinned?: boolean | undefined;
+    require_initial_post?: boolean | undefined;
+    is_announcement?: boolean | undefined;
+    attachments?: Array<CanvasFile | CanvasFileAttachment | Record<string, any>> | undefined;
 }
 
 export interface CanvasFile {

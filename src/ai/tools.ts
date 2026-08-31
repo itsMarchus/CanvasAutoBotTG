@@ -64,8 +64,45 @@ export const canvasToolDeclarations: FunctionDeclaration[] = [
         },
     },
     {
+        name: "read_canvas_file",
+        description: "Downloads and reads the full text, instructions, datasets, and visual graphs/diagrams from any Canvas file, assignment attachment, discussion topic dataset, or announcement document (PDF, Word .docx, PNG, JPG, code, CSV, Excel, text). Use this whenever questions, rubrics, datasets, or materials are inside an attached document or image.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                fileId: {
+                    type: Type.INTEGER,
+                    description: "The numeric Canvas file ID (e.g. 10423) if available.",
+                },
+                fileUrl: {
+                    type: Type.STRING,
+                    description: "The download URL of the attached file if numeric ID is not known.",
+                },
+                filename: {
+                    type: Type.STRING,
+                    description: "The filename of the attached document (e.g. 'Data.csv' or 'Prompt.pdf').",
+                },
+                assignmentId: {
+                    type: Type.INTEGER,
+                    description: "Optional assignment ID if reading a file attached to an assignment.",
+                },
+                topicId: {
+                    type: Type.INTEGER,
+                    description: "Optional discussion topic ID if reading a dataset or file attached to a discussion forum.",
+                },
+                announcementId: {
+                    type: Type.INTEGER,
+                    description: "Optional announcement ID if reading a file attached to an announcement.",
+                },
+                courseId: {
+                    type: Type.INTEGER,
+                    description: "Optional course ID if known.",
+                },
+            },
+        },
+    },
+    {
         name: "read_assignment_file",
-        description: "Downloads and reads the full text, instructions, and visual graphs/diagrams from an attached assignment document or image (PDF, Word .docx, PNG, JPG, code, CSV, text) on Canvas. Use this whenever an assignment has attached documents or images containing questions, rubrics, graphs, or instructions.",
+        description: "Alias for read_canvas_file. Downloads and reads attached assignment documents, datasets, or images.",
         parameters: {
             type: Type.OBJECT,
             properties: {
@@ -267,12 +304,121 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                 };
             }
 
+            case "read_canvas_file":
             case "read_assignment_file": {
                 let targetFileId: number | string | undefined = args.fileId;
                 let targetUrl: string | undefined = args.fileUrl;
                 let targetFilename: string | undefined = args.filename;
 
-                // If fileId or fileUrl not directly provided, search via assignmentId or assignmentTitle
+                // 1. If not directly provided, search via topicId or topicTitle (Discussion)
+                if (!targetFileId && !targetUrl && (args.topicId || args.topicTitle)) {
+                    let topic = null;
+                    if (args.topicId) {
+                        topic = args.courseId
+                            ? await getDiscussionDetails(Number(args.courseId), Number(args.topicId))
+                            : await findDiscussionById(Number(args.topicId));
+                    } else if (args.topicTitle) {
+                        const all = await getAllDiscussions();
+                        const query = String(args.topicTitle).toLowerCase();
+                        topic = all.find((t) => t.title.toLowerCase().includes(query)) || null;
+                    }
+
+                    if (topic) {
+                        const attachments = extractStructuredAttachments(topic.message || "");
+                        if (Array.isArray(topic.attachments)) {
+                            for (const att of topic.attachments as any[]) {
+                                const url = att.url;
+                                const id = att.id;
+                                const name = att.display_name || att.displayName || att.filename || "Attached File";
+                                if (url && !attachments.some((a) => a.url === url || (id && a.id === id))) {
+                                    attachments.push({
+                                        id,
+                                        filename: name,
+                                        displayName: name,
+                                        url,
+                                    });
+                                }
+                            }
+                        }
+
+                        if (attachments.length > 0) {
+                            if (targetFilename) {
+                                const match = attachments.find(
+                                    (att) =>
+                                        att.filename.toLowerCase().includes(String(targetFilename).toLowerCase()) ||
+                                        att.displayName.toLowerCase().includes(String(targetFilename).toLowerCase())
+                                );
+                                if (match) {
+                                    targetFileId = match.id;
+                                    targetUrl = match.url;
+                                    targetFilename = match.filename;
+                                }
+                            }
+
+                            if (!targetFileId && !targetUrl && attachments[0]) {
+                                targetFileId = attachments[0].id;
+                                targetUrl = attachments[0].url;
+                                targetFilename = attachments[0].filename;
+                            }
+                        }
+                    }
+                }
+
+                // 2. If not found, search via announcementId or announcementTitle
+                if (!targetFileId && !targetUrl && (args.announcementId || args.announcementTitle)) {
+                    let announcement = null;
+                    if (args.announcementId) {
+                        announcement = args.courseId
+                            ? await getAnnouncementDetails(Number(args.courseId), Number(args.announcementId))
+                            : await findAnnouncementById(Number(args.announcementId));
+                    } else if (args.announcementTitle) {
+                        const list = await getLatestAnnouncements(undefined, 25);
+                        const query = String(args.announcementTitle).toLowerCase();
+                        announcement = list.find((a) => a.title.toLowerCase().includes(query)) || null;
+                    }
+
+                    if (announcement) {
+                        const attachments = extractStructuredAttachments(announcement.message || "");
+                        if (Array.isArray(announcement.attachments)) {
+                            for (const att of announcement.attachments as any[]) {
+                                const url = att.url;
+                                const id = att.id;
+                                const name = att.display_name || att.displayName || att.filename || "Attached File";
+                                if (url && !attachments.some((a) => a.url === url || (id && a.id === id))) {
+                                    attachments.push({
+                                        id,
+                                        filename: name,
+                                        displayName: name,
+                                        url,
+                                    });
+                                }
+                            }
+                        }
+
+                        if (attachments.length > 0) {
+                            if (targetFilename) {
+                                const match = attachments.find(
+                                    (att) =>
+                                        att.filename.toLowerCase().includes(String(targetFilename).toLowerCase()) ||
+                                        att.displayName.toLowerCase().includes(String(targetFilename).toLowerCase())
+                                );
+                                if (match) {
+                                    targetFileId = match.id;
+                                    targetUrl = match.url;
+                                    targetFilename = match.filename;
+                                }
+                            }
+
+                            if (!targetFileId && !targetUrl && attachments[0]) {
+                                targetFileId = attachments[0].id;
+                                targetUrl = attachments[0].url;
+                                targetFilename = attachments[0].filename;
+                            }
+                        }
+                    }
+                }
+
+                // 3. If not found, search via assignmentId or assignmentTitle
                 if (!targetFileId && !targetUrl && (args.assignmentId || args.assignmentTitle)) {
                     let assignment = null;
                     if (args.assignmentId) {
@@ -311,7 +457,7 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                 const lookupTarget = targetFileId || targetUrl;
                 if (!lookupTarget) {
                     return {
-                        error: "Could not locate the file to read. Please provide fileId, fileUrl, or assignmentId with attached files.",
+                        error: "Could not locate the file to read. Please provide fileId, fileUrl, assignmentId, topicId, or announcementId with attached files.",
                     };
                 }
 
@@ -371,6 +517,22 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                 }
 
                 const rawMsg = announcement.message || "";
+                const structuredAttachments = extractStructuredAttachments(rawMsg);
+                if (Array.isArray(announcement.attachments)) {
+                    for (const att of announcement.attachments as any[]) {
+                        const url = att.url;
+                        const id = att.id;
+                        const name = att.display_name || att.displayName || att.filename || "Attached File";
+                        if (url && !structuredAttachments.some((a) => a.url === url || (id && a.id === id))) {
+                            structuredAttachments.push({
+                                id,
+                                filename: name,
+                                displayName: name,
+                                url,
+                            });
+                        }
+                    }
+                }
                 const markdownText = rawMsg.trim() ? turndown.turndown(rawMsg) : "";
 
                 return {
@@ -379,7 +541,17 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                     course: announcement.courseName,
                     author: announcement.author?.display_name,
                     posted_at: announcement.posted_at || announcement.created_at,
+                    has_attached_files: structuredAttachments.length > 0,
+                    attachments: structuredAttachments.map((att) => ({
+                        id: att.id,
+                        filename: att.filename,
+                        name: att.displayName,
+                        url: att.url,
+                    })),
                     content_text: markdownText || "(No message body)",
+                    recommended_action: structuredAttachments.length > 0
+                        ? "Announcement has attached file(s) or document(s). Call read_canvas_file to read the file contents."
+                        : undefined,
                     url: announcement.html_url || announcement.url,
                 };
             }
@@ -423,7 +595,22 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                 }
 
                 const rawMsg = topic.message || "";
-                const attachedFiles = extractAttachedFiles(rawMsg);
+                const structuredAttachments = extractStructuredAttachments(rawMsg);
+                if (Array.isArray(topic.attachments)) {
+                    for (const att of topic.attachments as any[]) {
+                        const url = att.url;
+                        const id = att.id;
+                        const name = att.display_name || att.displayName || att.filename || "Attached File";
+                        if (url && !structuredAttachments.some((a) => a.url === url || (id && a.id === id))) {
+                            structuredAttachments.push({
+                                id,
+                                filename: name,
+                                displayName: name,
+                                url,
+                            });
+                        }
+                    }
+                }
                 const markdownText = rawMsg.trim() ? turndown.turndown(rawMsg) : "";
                 const hasSubstantialText = markdownText.trim().length > 20;
 
@@ -437,9 +624,17 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                     require_initial_post: topic.require_initial_post ?? false,
                     replies_count: topic.discussion_subentry_count ?? 0,
                     has_text_instructions: hasSubstantialText,
-                    has_attached_files: attachedFiles.length > 0,
-                    attached_files: attachedFiles,
+                    has_attached_files: structuredAttachments.length > 0,
+                    attachments: structuredAttachments.map((att) => ({
+                        id: att.id,
+                        filename: att.filename,
+                        name: att.displayName,
+                        url: att.url,
+                    })),
                     instructions_text: markdownText || "(No prompt text provided)",
+                    recommended_action: structuredAttachments.length > 0
+                        ? "Discussion topic has attached file(s) or dataset(s). Call read_canvas_file to read the dataset or questions."
+                        : undefined,
                     url: topic.html_url || topic.url,
                 };
             }
