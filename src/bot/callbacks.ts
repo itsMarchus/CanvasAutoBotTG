@@ -32,10 +32,12 @@ import {
     buildDiscussionSelectionKeyboard,
     buildDiscussionDetailKeyboard,
     buildModulesKeyboard,
+    buildModuleDetailKeyboard,
     buildCourseFilesKeyboard,
     buildFileDetailKeyboard,
     buildBackToCoursesKeyboard,
 } from "./keyboards.js";
+
 
 
 /**
@@ -542,7 +544,7 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
 
             await ctx.editMessageText(text, {
                 parse_mode: "HTML",
-                reply_markup: buildModulesKeyboard(modules, courseId),
+                reply_markup: buildModuleDetailKeyboard(module, courseId),
                 link_preview_options: { is_disabled: true },
             });
             return;
@@ -634,9 +636,15 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
         }
 
         await ctx.answerCallbackQuery();
-    } catch (error) {
+    } catch (error: any) {
+        const errorMsg = error?.message || error?.description || String(error);
+        if (errorMsg.includes("message is not modified")) {
+            // Harmless Telegram 400 when user taps the same button or content doesn't change
+            return;
+        }
         console.error("Callback query error:", error);
-        await ctx.answerCallbackQuery({ text: "⚠️ Error processing request." });
+        await ctx.answerCallbackQuery({ text: "⚠️ Error processing request." }).catch(() => {});
     }
 }
+
 

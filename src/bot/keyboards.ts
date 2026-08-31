@@ -314,3 +314,34 @@ export function buildFileDetailKeyboard(
     return keyboard;
 }
 
+/**
+ * Builds an interactive action keyboard for a single module's learning items.
+ */
+export function buildModuleDetailKeyboard(
+    module: CanvasModule,
+    courseId: number
+): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    if (module.items && module.items.length > 0) {
+        // Show buttons for actionable items (Files, Assignments, Discussions)
+        for (const it of module.items.slice(0, 6)) {
+            const shortTitle = it.title.length > 25 ? `${it.title.slice(0, 23)}...` : it.title;
+            if (it.type === "File" && it.content_id) {
+                keyboard.text(`📁 ${shortTitle}`, `file_view:${courseId}:${it.content_id}`).row();
+            } else if (it.type === "Assignment" && it.content_id) {
+                keyboard.text(`📝 ${shortTitle}`, `assign_view:${courseId}:${it.content_id}`).row();
+            } else if (it.type === "Discussion" && it.content_id) {
+                keyboard.text(`💬 ${shortTitle}`, `disc_view:${courseId}:${it.content_id}`).row();
+            } else if (it.html_url) {
+                keyboard.url(`🔗 ${shortTitle}`, it.html_url).row();
+            }
+        }
+    }
+
+    keyboard.text("« Back to Modules", `course_modules:${courseId}`).row();
+    keyboard.text("« Back to Course Menu", `course:${courseId}`);
+    return keyboard;
+}
+
+
