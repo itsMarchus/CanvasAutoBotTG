@@ -145,4 +145,56 @@ export interface CanvasFileAttachment {
     contentType?: string | undefined;
 }
 
+export interface CanvasModuleItem {
+    id: number;
+    module_id?: number | undefined;
+    position?: number | undefined;
+    title: string;
+    indent?: number | undefined;
+    type: "File" | "Page" | "Discussion" | "Assignment" | "Quiz" | "SubHeader" | "ExternalUrl" | "ExternalTool" | string;
+    content_id?: number | undefined;
+    html_url?: string | undefined;
+    url?: string | undefined;
+    page_url?: string | undefined;
+    external_url?: string | undefined;
+    new_tab?: boolean | undefined;
+    completion_requirement?: Record<string, any> | undefined;
+    content_details?: {
+        points_possible?: number | undefined;
+        due_at?: string | null | undefined;
+        unlock_at?: string | null | undefined;
+        lock_at?: string | null | undefined;
+    } | undefined;
+}
+
+export interface CanvasModule {
+    id: number;
+    name: string;
+    position?: number | undefined;
+    unlock_at?: string | null | undefined;
+    require_sequential_progress?: boolean | undefined;
+    prerequisite_module_ids?: number[] | undefined;
+    items_count?: number | undefined;
+    items_url?: string | undefined;
+    items?: CanvasModuleItem[] | undefined;
+    state?: "locked" | "unlocked" | "started" | "completed" | string | undefined;
+    completed_at?: string | null | undefined;
+    publish_final_grades?: boolean | undefined;
+    published?: boolean | undefined;
+}
+
+export interface CanvasPage {
+    url: string;
+    title: string;
+    created_at?: string | undefined;
+    updated_at?: string | undefined;
+    hide_from_students?: boolean | undefined;
+    editing_roles?: string | undefined;
+    body?: string | null | undefined;
+    published?: boolean | undefined;
+    front_page?: boolean | undefined;
+    html_url?: string | undefined;
+}
+
+
 

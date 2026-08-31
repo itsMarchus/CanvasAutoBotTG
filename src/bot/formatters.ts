@@ -1,9 +1,10 @@
 import { env } from "../config/env.js";
-import type { CanvasCourse, CanvasUser } from "../canvas/types.js";
+import type { CanvasCourse, CanvasUser, CanvasModule, CanvasFile } from "../canvas/types.js";
 import type { EnrichedAssignment } from "../canvas/assignments.js";
 import type { EnrichedAnnouncement } from "../canvas/announcements.js";
 import type { EnrichedDiscussionTopic } from "../canvas/discussions.js";
 import type { BotState } from "../services/storage.js";
+
 
 import TurndownService from "turndown";
 
@@ -142,8 +143,10 @@ Here are the commands and features you can use:
 • /allassignments or /all — View full master list of all assignments
 • /assignment &lt;id&gt; — View full details & instructions for a specific task
 
-📖 <b>Courses & Updates</b>
+📖 <b>Courses & Materials</b>
 • /courses — List active courses with interactive action buttons
+• /modules [courseId] — View weekly learning units, lesson pages & files
+• /files [courseId] — Browse downloadable files & lecture slide decks
 • /announcements — View latest course announcements with interactive selection buttons
 • /announcement &lt;id&gt; — View full content & instructions for an announcement
 • /discussions or /forums — View course discussion topics & activities
@@ -609,3 +612,93 @@ export function formatAiResponseChunks(rawResponse: string, chunkSize = 3500): s
 
     return chunks;
 }
+
+/**
+ * Formats a list of course modules for Telegram HTML.
+ */
+export function formatModuleList(modules: CanvasModule[], courseName?: string): string {
+    const header = courseName
+        ? `📦 <b>Weekly Learning Modules for ${escapeHtml(courseName)}</b>\n\n`
+        : `📦 <b>Weekly Learning Modules</b>\n\n`;
+
+    if (modules.length === 0) {
+        return `${header}<i>No published modules found in this course.</i>`;
+    }
+
+    const items = modules.map((m, index) => {
+        const count = m.items_count ?? m.items?.length ?? 0;
+        const stateStr = m.state ? ` (${escapeHtml(m.state)})` : "";
+        return `<b>${index + 1}. ${escapeHtml(m.name)}</b>${stateStr}\n   📄 <i>${count} learning items</i>`;
+    });
+
+    return `${header}${items.join("\n\n")}\n\n👉 <i>Tap a module button below to inspect files and lessons.</i>`;
+}
+
+/**
+ * Formats full details and items of a single module.
+ */
+export function formatModuleDetail(module: CanvasModule, courseName?: string): string {
+    const courseStr = courseName ? ` • <i>${escapeHtml(courseName)}</i>` : "";
+    let message = `📦 <b>${escapeHtml(module.name)}</b>${courseStr}\n\n`;
+
+    if (!module.items || module.items.length === 0) {
+        message += `<i>No learning items found in this module.</i>`;
+        return message;
+    }
+
+    message += `<b>Module Learning Items (${module.items.length}):</b>\n\n`;
+
+    const itemLines = module.items.map((it, idx) => {
+        let icon = "📄";
+        if (it.type === "Assignment") icon = "📝";
+        else if (it.type === "Quiz") icon = "❓";
+        else if (it.type === "Discussion") icon = "💬";
+        else if (it.type === "File") icon = "📁";
+        else if (it.type === "SubHeader") icon = "📌";
+        else if (it.type === "ExternalUrl") icon = "🔗";
+
+        const title = escapeHtml(it.title);
+        const typeStr = escapeHtml(it.type);
+        return `${icon} <b>${idx + 1}. ${title}</b>\n   <i>Type: ${typeStr}</i>`;
+    });
+
+    message += itemLines.join("\n\n");
+    return message;
+}
+
+/**
+ * Formats a list of course files and slide decks for Telegram HTML.
+ */
+export function formatCourseFileList(files: CanvasFile[], courseName?: string): string {
+    const header = courseName
+        ? `📁 <b>Course Files & Slide Decks for ${escapeHtml(courseName)}</b>\n\n`
+        : `📁 <b>Course Files & Slide Decks</b>\n\n`;
+
+    if (files.length === 0) {
+        return `${header}<i>No downloadable files found in this course repository.</i>`;
+    }
+
+    const items = files.slice(0, 15).map((f, index) => {
+        const name = escapeHtml(f.display_name || f.filename);
+        const sizeMb = f.size ? (f.size / (1024 * 1024)).toFixed(1) + " MB" : "Unknown size";
+        return `<b>${index + 1}. 📄 ${name}</b>\n   <i>Size: ${sizeMb}</i>`;
+    });
+
+    return `${header}${items.join("\n\n")}\n\n👉 <i>Tap a file button below to download or have Gemini AI explain/summarize it.</i>`;
+}
+
+/**
+ * Formats details of a single course file.
+ */
+export function formatFileDetail(file: CanvasFile, courseName?: string): string {
+    const courseStr = courseName ? `\n📖 <b>Course:</b> ${escapeHtml(courseName)}` : "";
+    const name = escapeHtml(file.display_name || file.filename);
+    const sizeMb = file.size ? (file.size / (1024 * 1024)).toFixed(2) + " MB" : "Unknown size";
+    const typeStr = file["content-type"] ? escapeHtml(file["content-type"]) : "Document";
+
+    return `📄 <b>${name}</b>${courseStr}\n\n` +
+        `📦 <b>Size:</b> ${sizeMb}\n` +
+        `🏷️ <b>Type:</b> <code>${typeStr}</code>\n\n` +
+        `💡 <i>Tap <b>AI Summarize / Explain</b> to have Gemini read this document and extract its key takeaways and notes!</i>`;
+}
+

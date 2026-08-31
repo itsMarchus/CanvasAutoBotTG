@@ -18,7 +18,9 @@ import {
     downloadCanvasFile,
     extractFileContent,
     extractStructuredAttachments,
+    getCourseFiles,
 } from "../canvas/files.js";
+import { getCourseModules, getCoursePage } from "../canvas/modules.js";
 import { cleanHtmlSnippet, turndown } from "../bot/formatters.js";
 
 /**
@@ -123,6 +125,60 @@ export const canvasToolDeclarations: FunctionDeclaration[] = [
                     description: "Optional assignment ID to find attached files for.",
                 },
             },
+        },
+    },
+    {
+        name: "get_course_modules",
+        description: "Lists all weekly learning modules, units, lecture pages, slides, and learning items for a specific Canvas course.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                courseId: {
+                    type: Type.INTEGER,
+                    description: "The numeric Canvas course ID (e.g. 523).",
+                },
+            },
+            required: ["courseId"],
+        },
+    },
+    {
+        name: "get_course_files",
+        description: "Lists or searches downloadable files, lecture slide decks, syllabus files, and documents in a Canvas course's Files repository.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                courseId: {
+                    type: Type.INTEGER,
+                    description: "The numeric Canvas course ID (e.g. 523).",
+                },
+                searchTerm: {
+                    type: Type.STRING,
+                    description: "Optional keyword to search for specific files (e.g. 'Lecture 3', 'Syllabus', 'Cheat Sheet').",
+                },
+                limit: {
+                    type: Type.INTEGER,
+                    description: "Maximum number of files to retrieve (default: 20).",
+                },
+            },
+            required: ["courseId"],
+        },
+    },
+    {
+        name: "get_course_page",
+        description: "Fetches full text, lecture notes, syllabus, or instructional content from a Canvas course wiki page.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                courseId: {
+                    type: Type.INTEGER,
+                    description: "The numeric Canvas course ID.",
+                },
+                pageUrl: {
+                    type: Type.STRING,
+                    description: "The page URL slug or ID (e.g. 'syllabus' or 'week-1-lecture-notes').",
+                },
+            },
+            required: ["courseId", "pageUrl"],
         },
     },
     {
@@ -454,10 +510,20 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                     }
                 }
 
+                // 4. If not found, search course files repository if courseId and filename are provided
+                if (!targetFileId && !targetUrl && args.courseId && targetFilename) {
+                    const courseFiles = await getCourseFiles(Number(args.courseId), String(targetFilename));
+                    if (courseFiles.length > 0 && courseFiles[0]) {
+                        targetFileId = courseFiles[0].id;
+                        targetUrl = courseFiles[0].url;
+                        targetFilename = courseFiles[0].display_name || courseFiles[0].filename;
+                    }
+                }
+
                 const lookupTarget = targetFileId || targetUrl;
                 if (!lookupTarget) {
                     return {
-                        error: "Could not locate the file to read. Please provide fileId, fileUrl, assignmentId, topicId, or announcementId with attached files.",
+                        error: "Could not locate the file to read. Please provide fileId, fileUrl, assignmentId, topicId, announcementId, or courseId with a filename.",
                     };
                 }
 
@@ -481,6 +547,63 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
                     character_count: extracted.charCount,
                     is_truncated: extracted.isTruncated,
                     file_content: extracted.text,
+                };
+            }
+
+            case "get_course_modules": {
+                const modules = await getCourseModules(Number(args.courseId));
+                return modules.map((m) => ({
+                    id: m.id,
+                    name: m.name,
+                    state: m.state,
+                    items_count: m.items_count ?? m.items?.length ?? 0,
+                    items: m.items?.map((it) => ({
+                        id: it.id,
+                        title: it.title,
+                        type: it.type,
+                        content_id: it.content_id,
+                        page_url: it.page_url,
+                        html_url: it.html_url || it.url,
+                    })) || [],
+                }));
+            }
+
+            case "get_course_files": {
+                const limit = Number(args.limit) || 25;
+                const files = await getCourseFiles(Number(args.courseId), args.searchTerm, limit);
+                return files.map((f) => ({
+                    id: f.id,
+                    name: f.display_name || f.filename,
+                    filename: f.filename,
+                    size_bytes: f.size,
+                    content_type: f["content-type"],
+                    updated_at: f.updated_at,
+                    url: f.url,
+                }));
+            }
+
+            case "get_course_page": {
+                const page = await getCoursePage(Number(args.courseId), String(args.pageUrl));
+                if (!page) {
+                    return { error: `Course page '${args.pageUrl}' not found for course #${args.courseId}.` };
+                }
+
+                const rawBody = page.body || "";
+                const structuredAttachments = extractStructuredAttachments(rawBody);
+                const markdownText = rawBody.trim() ? turndown.turndown(rawBody) : "";
+
+                return {
+                    title: page.title,
+                    url: page.url,
+                    html_url: page.html_url,
+                    content_text: markdownText || "(Empty page)",
+                    has_attached_files: structuredAttachments.length > 0,
+                    attachments: structuredAttachments.map((att) => ({
+                        id: att.id,
+                        filename: att.filename,
+                        name: att.displayName,
+                        url: att.url,
+                    })),
                 };
             }
 
@@ -657,3 +780,4 @@ export async function executeCanvasTool(name: string, args: Record<string, any>)
         return { error: `Tool execution failed: ${err.message || String(err)}` };
     }
 }
+

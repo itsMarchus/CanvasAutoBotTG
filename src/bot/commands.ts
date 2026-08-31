@@ -14,6 +14,8 @@ import {
 } from "../canvas/assignments.js";
 import { getLatestAnnouncements, findAnnouncementById } from "../canvas/announcements.js";
 import { getAllDiscussions, findDiscussionById, getDiscussionDetails } from "../canvas/discussions.js";
+import { getCourseModules } from "../canvas/modules.js";
+import { getCourseFiles } from "../canvas/files.js";
 import { storage } from "../services/storage.js";
 import { askGeminiAgent } from "../ai/agent.js";
 import {
@@ -26,6 +28,8 @@ import {
     formatAnnouncementDetail,
     formatDiscussionList,
     formatDiscussionDetail,
+    formatModuleList,
+    formatCourseFileList,
     formatStatusMessage,
     formatAiResponseChunks,
 } from "./formatters.js";
@@ -36,7 +40,10 @@ import {
     buildAnnouncementDetailKeyboard,
     buildDiscussionSelectionKeyboard,
     buildDiscussionDetailKeyboard,
+    buildModulesKeyboard,
+    buildCourseFilesKeyboard,
 } from "./keyboards.js";
+
 
 /**
  * Safely sends AI markdown/HTML response chunks with plain text fallback if parsing errors occur.
@@ -685,3 +692,82 @@ export async function handleTestNotify(ctx: CommandContext<Context>): Promise<vo
     await ctx.reply(testMsg, { parse_mode: "HTML" });
     await storage.logNotification("assignment", 999999, "new_item");
 }
+
+/**
+ * /modules [courseId]: Lists weekly modules for a course.
+ */
+export async function handleModules(ctx: CommandContext<Context>): Promise<void> {
+    const arg = ctx.match?.trim();
+    if (arg && !isNaN(Number(arg))) {
+        const courseId = Number(arg);
+        await ctx.replyWithChatAction("typing");
+        const [courses, modules] = await Promise.all([
+            getActiveCourses(),
+            getCourseModules(courseId),
+        ]);
+        const course = courses.find((c) => c.id === courseId);
+        const courseName = course ? course.name : `Course #${courseId}`;
+        const text = formatModuleList(modules, courseName);
+        const keyboard = modules.length > 0
+            ? buildModulesKeyboard(modules, courseId)
+            : buildCoursesKeyboard(courses);
+
+        await ctx.reply(text, {
+            parse_mode: "HTML",
+            reply_markup: keyboard,
+            link_preview_options: { is_disabled: true },
+        });
+        return;
+    }
+
+    // If no courseId, show courses list
+    const courses = await getActiveCourses();
+    await ctx.reply(
+        "📦 <b>Select a course to view its weekly learning modules:</b>\n\n" +
+        "<i>Or type <code>/modules &lt;courseId&gt;</code> directly.</i>",
+        {
+            parse_mode: "HTML",
+            reply_markup: buildCoursesKeyboard(courses),
+        }
+    );
+}
+
+/**
+ * /files [courseId]: Lists downloadable files and slide decks for a course.
+ */
+export async function handleFiles(ctx: CommandContext<Context>): Promise<void> {
+    const arg = ctx.match?.trim();
+    if (arg && !isNaN(Number(arg))) {
+        const courseId = Number(arg);
+        await ctx.replyWithChatAction("typing");
+        const [courses, files] = await Promise.all([
+            getActiveCourses(),
+            getCourseFiles(courseId, undefined, 20),
+        ]);
+        const course = courses.find((c) => c.id === courseId);
+        const courseName = course ? course.name : `Course #${courseId}`;
+        const text = formatCourseFileList(files, courseName);
+        const keyboard = files.length > 0
+            ? buildCourseFilesKeyboard(files, courseId)
+            : buildCoursesKeyboard(courses);
+
+        await ctx.reply(text, {
+            parse_mode: "HTML",
+            reply_markup: keyboard,
+            link_preview_options: { is_disabled: true },
+        });
+        return;
+    }
+
+    // If no courseId, show courses list
+    const courses = await getActiveCourses();
+    await ctx.reply(
+        "📁 <b>Select a course to browse downloadable files and lecture slides:</b>\n\n" +
+        "<i>Or type <code>/files &lt;courseId&gt;</code> directly.</i>",
+        {
+            parse_mode: "HTML",
+            reply_markup: buildCoursesKeyboard(courses),
+        }
+    );
+}
+

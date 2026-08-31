@@ -17,6 +17,8 @@ import {
     handleDiscussions,
     handleDiscussionDetail,
     handleStatus,
+    handleModules,
+    handleFiles,
     handleAsk,
     handleExplain,
     handleAnswer,
@@ -25,6 +27,7 @@ import {
     handleFreeFormChat,
     handleTestNotify,
 } from "./commands.js";
+
 import { handleCallbackQuery } from "./callbacks.js";
 
 export const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
@@ -80,6 +83,8 @@ export async function setupBotCommands(): Promise<void> {
         { command: "assignments", description: "View active & upcoming assignments" },
         { command: "todo", description: "View pending tasks needing action" },
         { command: "courses", description: "View active courses with interactive menu" },
+        { command: "modules", description: "View weekly learning modules & lessons" },
+        { command: "files", description: "Browse course files & slide decks" },
         { command: "announcements", description: "View latest course announcements" },
         { command: "discussions", description: "View course discussion topics & activities" },
         { command: "allassignments", description: "View master list of all assignments" },
@@ -93,6 +98,9 @@ export async function setupBotCommands(): Promise<void> {
 bot.command("start", handleStart);
 bot.command("help", handleHelp);
 bot.command("courses", handleCourses);
+bot.command("modules", handleModules);
+bot.command("files", handleFiles);
+bot.command("slides", handleFiles);
 
 // 2. AI Tutor & Assistant commands
 bot.command("ask", handleAsk);

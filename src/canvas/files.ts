@@ -18,6 +18,33 @@ export async function getCanvasFileMetadata(fileId: number): Promise<CanvasFile 
 }
 
 /**
+ * Fetches downloadable files for a specific Canvas course with optional search filtering.
+ */
+export async function getCourseFiles(
+    courseId: number,
+    searchTerm?: string,
+    limit = 50
+): Promise<CanvasFile[]> {
+    try {
+        const params: Record<string, string | number> = {
+            per_page: limit,
+            sort: "updated_at",
+            order: "desc",
+        };
+        if (searchTerm && searchTerm.trim()) {
+            params.search_term = searchTerm.trim();
+        }
+
+        const files = await canvasFetch<CanvasFile[]>(`/courses/${courseId}/files`, params);
+        return files || [];
+    } catch (err) {
+        console.error(`Error fetching files for course #${courseId}:`, err);
+        return [];
+    }
+}
+
+
+/**
  * Downloads a file from Canvas using its numeric ID or URL with proper authentication.
  */
 export async function downloadCanvasFile(fileIdOrUrl: string | number): Promise<{
