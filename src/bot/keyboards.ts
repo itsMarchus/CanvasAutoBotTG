@@ -1,5 +1,12 @@
 import { InlineKeyboard } from "grammy";
-import type { CanvasCourse, CanvasAssignment, CanvasDiscussionTopic, CanvasAnnouncement } from "../canvas/types.js";
+import type {
+    CanvasCourse,
+    CanvasAssignment,
+    CanvasDiscussionTopic,
+    CanvasAnnouncement,
+    CanvasModule,
+    CanvasFile,
+} from "../canvas/types.js";
 import type { EnrichedDiscussionTopic } from "../canvas/discussions.js";
 import type { EnrichedAnnouncement } from "../canvas/announcements.js";
 
@@ -29,10 +36,14 @@ export function buildCourseActionKeyboard(courseId: number): InlineKeyboard {
         .text("📂 All Assignments", `course_all:${courseId}`)
         .text("📢 Announcements", `course_announce:${courseId}`)
         .row()
-        .text("💬 Discussions & Activities", `course_disc:${courseId}`)
+        .text("💬 Discussions", `course_disc:${courseId}`)
+        .text("📦 Weekly Modules", `course_modules:${courseId}`)
+        .row()
+        .text("📁 Course Files & Slides", `course_files:${courseId}`)
         .row()
         .text("« Back to Courses", "back_courses");
 }
+
 
 /**
  * Builds an interactive keyboard with buttons to view specific assignment details.
@@ -235,3 +246,102 @@ export function buildNewAnnouncementNotificationKeyboard(
 export function buildBackToCoursesKeyboard(): InlineKeyboard {
     return new InlineKeyboard().text("« Back to All Courses", "back_courses");
 }
+
+/**
+ * Builds an interactive keyboard listing weekly modules for a course.
+ */
+export function buildModulesKeyboard(
+    modules: CanvasModule[],
+    courseId: number,
+    maxButtons: number = 8
+): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    const subset = modules.slice(0, maxButtons);
+    subset.forEach((m, index) => {
+        const label = m.name.length > 28 ? `${m.name.slice(0, 26)}...` : m.name;
+        keyboard.text(`📦 ${index + 1}. ${label}`, `module_view:${courseId}:${m.id}`).row();
+    });
+
+    keyboard.text("« Back to Course Menu", `course:${courseId}`);
+    return keyboard;
+}
+
+/**
+ * Builds an interactive keyboard listing course files and slide decks.
+ */
+export function buildCourseFilesKeyboard(
+    files: CanvasFile[],
+    courseId: number,
+    maxButtons: number = 8
+): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    const subset = files.slice(0, maxButtons);
+    subset.forEach((f, index) => {
+        const name = f.display_name || f.filename;
+        const label = name.length > 28 ? `${name.slice(0, 26)}...` : name;
+        keyboard.text(`📄 ${index + 1}. ${label}`, `file_view:${courseId}:${f.id}`).row();
+    });
+
+    keyboard.text("« Back to Course Menu", `course:${courseId}`);
+    return keyboard;
+}
+
+/**
+ * Builds an action keyboard for a single course file view.
+ */
+export function buildFileDetailKeyboard(
+    file: CanvasFile,
+    courseId?: number
+): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    keyboard
+        .text("🤖 AI Summarize / Explain", `ai_explain_file:${courseId || 0}:${file.id}`)
+        .row();
+
+    if (file.url) {
+        keyboard.url("👉 Download / Open File", file.url).row();
+    }
+
+    if (courseId) {
+        keyboard.text("« Back to Course Files", `course_files:${courseId}`);
+    } else {
+        keyboard.text("« Back to Courses", "back_courses");
+    }
+
+    return keyboard;
+}
+
+/**
+ * Builds an interactive action keyboard for a single module's learning items.
+ */
+export function buildModuleDetailKeyboard(
+    module: CanvasModule,
+    courseId: number
+): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    if (module.items && module.items.length > 0) {
+        // Show buttons for actionable items (Files, Assignments, Discussions)
+        for (const it of module.items.slice(0, 6)) {
+            const shortTitle = it.title.length > 25 ? `${it.title.slice(0, 23)}...` : it.title;
+            if (it.type === "File" && it.content_id) {
+                keyboard.text(`📁 ${shortTitle}`, `file_view:${courseId}:${it.content_id}`).row();
+            } else if (it.type === "Assignment" && it.content_id) {
+                keyboard.text(`📝 ${shortTitle}`, `assign_view:${courseId}:${it.content_id}`).row();
+            } else if (it.type === "Discussion" && it.content_id) {
+                keyboard.text(`💬 ${shortTitle}`, `disc_view:${courseId}:${it.content_id}`).row();
+            } else if (it.html_url) {
+                keyboard.url(`🔗 ${shortTitle}`, it.html_url).row();
+            }
+        }
+    }
+
+    keyboard.text("« Back to Modules", `course_modules:${courseId}`).row();
+    keyboard.text("« Back to Course Menu", `course:${courseId}`);
+    return keyboard;
+}
+
+

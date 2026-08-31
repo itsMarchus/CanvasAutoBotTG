@@ -81,38 +81,120 @@ export interface CanvasAnnouncement {
         id: number;
         display_name: string;
         avatar_image_url?: string;
-    };
+    } | undefined;
     context_code: string; // e.g. "course_12345"
-    read_state?: "read" | "unread";
+    read_state?: "read" | "unread" | undefined;
+    attachments?: Array<CanvasFile | CanvasFileAttachment | Record<string, any>> | undefined;
 }
 
 export interface CanvasDiscussionTopic {
     id: number;
     title: string;
-    message?: string | null;
-    posted_at?: string | null;
+    message?: string | null | undefined;
+    posted_at?: string | null | undefined;
     created_at: string;
-    last_reply_at?: string | null;
-    delayed_post_at?: string | null;
-    lock_at?: string | null;
-    todo_date?: string | null;
-    assignment_id?: number | null;
-    discussion_type?: "side_comment" | "threaded";
-    user_name?: string;
-    discussion_subentry_count?: number;
-    unread_count?: number;
-    subscribed?: boolean;
-    published?: boolean;
-    locked?: boolean;
+    last_reply_at?: string | null | undefined;
+    delayed_post_at?: string | null | undefined;
+    lock_at?: string | null | undefined;
+    todo_date?: string | null | undefined;
+    assignment_id?: number | null | undefined;
+    discussion_type?: "side_comment" | "threaded" | undefined;
+    user_name?: string | undefined;
+    discussion_subentry_count?: number | undefined;
+    unread_count?: number | undefined;
+    subscribed?: boolean | undefined;
+    published?: boolean | undefined;
+    locked?: boolean | undefined;
     author?: {
         id: number;
         display_name: string;
         avatar_image_url?: string;
         html_url?: string;
-    };
+    } | undefined;
     html_url: string;
     url: string;
-    pinned?: boolean;
-    require_initial_post?: boolean;
-    is_announcement?: boolean;
+    pinned?: boolean | undefined;
+    require_initial_post?: boolean | undefined;
+    is_announcement?: boolean | undefined;
+    attachments?: Array<CanvasFile | CanvasFileAttachment | Record<string, any>> | undefined;
 }
+
+export interface CanvasFile {
+    id: number;
+    folder_id?: number | undefined;
+    display_name: string;
+    filename: string;
+    "content-type"?: string | undefined;
+    url?: string | undefined;
+    size?: number | undefined;
+    created_at?: string | undefined;
+    updated_at?: string | undefined;
+    unlock_at?: string | null | undefined;
+    locked?: boolean | undefined;
+    hidden?: boolean | undefined;
+    thumbnail_url?: string | null | undefined;
+    mime_class?: string | undefined;
+}
+
+export interface CanvasFileAttachment {
+    id?: number | undefined;
+    filename: string;
+    displayName: string;
+    url: string;
+    size?: number | undefined;
+    contentType?: string | undefined;
+}
+
+export interface CanvasModuleItem {
+    id: number;
+    module_id?: number | undefined;
+    position?: number | undefined;
+    title: string;
+    indent?: number | undefined;
+    type: "File" | "Page" | "Discussion" | "Assignment" | "Quiz" | "SubHeader" | "ExternalUrl" | "ExternalTool" | string;
+    content_id?: number | undefined;
+    html_url?: string | undefined;
+    url?: string | undefined;
+    page_url?: string | undefined;
+    external_url?: string | undefined;
+    new_tab?: boolean | undefined;
+    completion_requirement?: Record<string, any> | undefined;
+    content_details?: {
+        points_possible?: number | undefined;
+        due_at?: string | null | undefined;
+        unlock_at?: string | null | undefined;
+        lock_at?: string | null | undefined;
+    } | undefined;
+}
+
+export interface CanvasModule {
+    id: number;
+    name: string;
+    position?: number | undefined;
+    unlock_at?: string | null | undefined;
+    require_sequential_progress?: boolean | undefined;
+    prerequisite_module_ids?: number[] | undefined;
+    items_count?: number | undefined;
+    items_url?: string | undefined;
+    items?: CanvasModuleItem[] | undefined;
+    state?: "locked" | "unlocked" | "started" | "completed" | string | undefined;
+    completed_at?: string | null | undefined;
+    publish_final_grades?: boolean | undefined;
+    published?: boolean | undefined;
+}
+
+export interface CanvasPage {
+    url: string;
+    title: string;
+    created_at?: string | undefined;
+    updated_at?: string | undefined;
+    hide_from_students?: boolean | undefined;
+    editing_roles?: string | undefined;
+    body?: string | null | undefined;
+    published?: boolean | undefined;
+    front_page?: boolean | undefined;
+    html_url?: string | undefined;
+}
+
+
+

@@ -4,6 +4,8 @@ import { getActiveCourses, getCourseById } from "../canvas/courses.js";
 import { getCourseAssignments, getAssignmentDetails } from "../canvas/assignments.js";
 import { getLatestAnnouncements, getAnnouncementDetails } from "../canvas/announcements.js";
 import { getCourseDiscussions, getDiscussionDetails } from "../canvas/discussions.js";
+import { getCourseModules } from "../canvas/modules.js";
+import { getCourseFiles, getCanvasFileMetadata } from "../canvas/files.js";
 import { askGeminiAgent } from "../ai/agent.js";
 import {
     escapeHtml,
@@ -14,6 +16,10 @@ import {
     formatDiscussionList,
     formatDiscussionDetail,
     formatCourseList,
+    formatModuleList,
+    formatModuleDetail,
+    formatCourseFileList,
+    formatFileDetail,
     formatAiResponseChunks,
 } from "./formatters.js";
 import {
@@ -25,8 +31,14 @@ import {
     buildAnnouncementDetailKeyboard,
     buildDiscussionSelectionKeyboard,
     buildDiscussionDetailKeyboard,
+    buildModulesKeyboard,
+    buildModuleDetailKeyboard,
+    buildCourseFilesKeyboard,
+    buildFileDetailKeyboard,
     buildBackToCoursesKeyboard,
 } from "./keyboards.js";
+
+
 
 /**
  * Handles callback queries from inline keyboards.
@@ -482,9 +494,157 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
             return;
         }
 
+        // 16. View course weekly modules
+        if (data.startsWith("course_modules:")) {
+            const courseId = parseInt(data.split(":")[1] || "", 10);
+            if (isNaN(courseId)) return;
+
+            await ctx.answerCallbackQuery({ text: "Fetching course modules..." });
+            const [course, modules] = await Promise.all([
+                getCourseById(courseId),
+                getCourseModules(courseId),
+            ]);
+
+            const courseName = course ? course.name : `Course #${courseId}`;
+            const text = formatModuleList(modules, courseName);
+            const keyboard = modules.length > 0
+                ? buildModulesKeyboard(modules, courseId)
+                : buildCourseActionKeyboard(courseId);
+
+            await ctx.editMessageText(text, {
+                parse_mode: "HTML",
+                reply_markup: keyboard,
+                link_preview_options: { is_disabled: true },
+            });
+            return;
+        }
+
+        // 17. View specific module items
+        if (data.startsWith("module_view:")) {
+            const parts = data.split(":");
+            const courseId = parseInt(parts[1] || "", 10);
+            const moduleId = parseInt(parts[2] || "", 10);
+
+            if (isNaN(moduleId)) return;
+
+            await ctx.answerCallbackQuery({ text: "Loading module details..." });
+            const [course, modules] = await Promise.all([
+                getCourseById(courseId),
+                getCourseModules(courseId),
+            ]);
+
+            const module = modules.find((m) => m.id === moduleId);
+            if (!module) {
+                await ctx.reply("❌ <b>Module not found.</b>", { parse_mode: "HTML" });
+                return;
+            }
+
+            const courseName = course ? course.name : `Course #${courseId}`;
+            const text = formatModuleDetail(module, courseName);
+
+            await ctx.editMessageText(text, {
+                parse_mode: "HTML",
+                reply_markup: buildModuleDetailKeyboard(module, courseId),
+                link_preview_options: { is_disabled: true },
+            });
+            return;
+        }
+
+        // 18. View course files repository & slide decks
+        if (data.startsWith("course_files:")) {
+            const courseId = parseInt(data.split(":")[1] || "", 10);
+            if (isNaN(courseId)) return;
+
+            await ctx.answerCallbackQuery({ text: "Fetching course files..." });
+            const [course, files] = await Promise.all([
+                getCourseById(courseId),
+                getCourseFiles(courseId, undefined, 20),
+            ]);
+
+            const courseName = course ? course.name : `Course #${courseId}`;
+            const text = formatCourseFileList(files, courseName);
+            const keyboard = files.length > 0
+                ? buildCourseFilesKeyboard(files, courseId)
+                : buildCourseActionKeyboard(courseId);
+
+            await ctx.editMessageText(text, {
+                parse_mode: "HTML",
+                reply_markup: keyboard,
+                link_preview_options: { is_disabled: true },
+            });
+            return;
+        }
+
+        // 19. View specific file details
+        if (data.startsWith("file_view:")) {
+            const parts = data.split(":");
+            const courseId = parseInt(parts[1] || "", 10);
+            const fileId = parseInt(parts[2] || "", 10);
+
+            if (isNaN(fileId)) return;
+
+            await ctx.answerCallbackQuery({ text: "Loading file metadata..." });
+            const [course, file] = await Promise.all([
+                getCourseById(courseId),
+                getCanvasFileMetadata(fileId),
+            ]);
+
+            if (!file) {
+                await ctx.reply("❌ <b>File not found on Canvas.</b>", { parse_mode: "HTML" });
+                return;
+            }
+
+            const courseName = course ? course.name : `Course #${courseId}`;
+            const text = formatFileDetail(file, courseName);
+
+            await ctx.editMessageText(text, {
+                parse_mode: "HTML",
+                reply_markup: buildFileDetailKeyboard(file, courseId),
+                link_preview_options: { is_disabled: true },
+            });
+            return;
+        }
+
+        // 20. AI Summarize / Explain Course File or Slide Deck
+        if (data.startsWith("ai_explain_file:")) {
+            const parts = data.split(":");
+            const courseId = parseInt(parts[1] || "", 10);
+            const fileId = parseInt(parts[2] || "", 10);
+
+            if (isNaN(fileId)) return;
+
+            await ctx.answerCallbackQuery({ text: "🧠 Gemini is reading document..." });
+            if (!ctx.chat) return;
+
+            await ctx.replyWithChatAction("typing");
+
+            const prompt = `Please download and read the course document with file ID ${fileId} in course ID ${courseId}. ` +
+                `Provide a comprehensive academic breakdown, outline key concepts covered, explain formulas/theories/diagrams, and summarize main takeaways for the student.`;
+
+            const user = await getCurrentUser().catch(() => undefined);
+            const response = await askGeminiAgent(ctx.chat.id, prompt, user?.name);
+            const chunks = formatAiResponseChunks(response);
+
+            for (const chunk of chunks) {
+                try {
+                    await ctx.reply(chunk, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+                } catch {
+                    await ctx.reply(chunk, { link_preview_options: { is_disabled: true } });
+                }
+            }
+            return;
+        }
+
         await ctx.answerCallbackQuery();
-    } catch (error) {
+    } catch (error: any) {
+        const errorMsg = error?.message || error?.description || String(error);
+        if (errorMsg.includes("message is not modified")) {
+            // Harmless Telegram 400 when user taps the same button or content doesn't change
+            return;
+        }
         console.error("Callback query error:", error);
-        await ctx.answerCallbackQuery({ text: "⚠️ Error processing request." });
+        await ctx.answerCallbackQuery({ text: "⚠️ Error processing request." }).catch(() => {});
     }
 }
+
+
